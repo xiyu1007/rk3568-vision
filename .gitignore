@@ -2,3 +2,5 @@
 .vscode/
 output/
 tmp/
+*.mp4
+*.jpg
