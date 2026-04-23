@@ -15,7 +15,7 @@ set(CMAKE_C_EXTENSIONS OFF)  # 禁用 GNU 扩展，严格使用 C99
 # 可选：设置调试模式（默认开启DEBUG）
 # 可以通过 cmake -DV4L2_DEBUG_ENABLE=OFF 来关闭
 option(V4L2_DEBUG_ENABLE "Enable V4L2 debug output" OFF)
-option(V4L2_LOG_ENABLE "Enable V4L2 log to file" OFF)
+option(V4L2_LOG_ENABLE "Enable V4L2 log to file" ON)
 
 # 根据选项添加宏定义
 if(V4L2_DEBUG_ENABLE)
@@ -29,14 +29,13 @@ endif()
 # 源文件列表（包含所有依赖）
 # 源文件列表
 set(SOURCES
-    main.c
-    ${CMAKE_CURRENT_SOURCE_DIR}/lib/log/src/log.c
-    ${CMAKE_CURRENT_SOURCE_DIR}/lib/v4l2/src/v4l2_capture.c
+    main.cc
+    ${CMAKE_CURRENT_SOURCE_DIR}/src/*.c
 )
 # 包含头文件目录
 include_directories(
-    ${CMAKE_CURRENT_SOURCE_DIR}/lib/log/include
-    ${CMAKE_CURRENT_SOURCE_DIR}/lib/v4l2/include
+    ${CMAKE_CURRENT_SOURCE_DIR}/include
+    ${CMAKE_CURRENT_SOURCE_DIR}/lib/
     ${CMAKE_CURRENT_SOURCE_DIR}
 )
 
