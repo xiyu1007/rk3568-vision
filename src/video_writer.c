@@ -2,6 +2,33 @@
 #include <stdio.h>
 #include <string.h>
 
+#include <opencv2/opencv.hpp>
+
+
+int video_show(const v4l2_ctx_t *ctx,const v4l2_buffer_t *f)
+{
+    cv::Mat img;
+
+    if (ctx->pixfmt == V4L2_PIX_FMT_MJPEG)
+    {
+        cv::Mat buf(1, f->bytesused[0], CV_8UC1, f->start[0]);
+        img = cv::imdecode(buf, cv::IMREAD_COLOR);
+    }
+    else if (ctx->pixfmt == V4L2_PIX_FMT_NV12)
+    {
+        cv::Mat yuv(ctx->height * 3 / 2,ctx->width,CV_8UC1,f->start[0]);
+        cv::cvtColor(yuv, img, cv::COLOR_YUV2BGR_NV12);
+    }
+
+    if (!img.empty())
+        cv::imshow("video", img);
+
+    cv::waitKey(1);
+
+    return 0;
+}
+
+
 static int save_frame(const v4l2_ctx_t *ctx,const v4l2_buffer_t *f,int id)
 {
     char name[64];

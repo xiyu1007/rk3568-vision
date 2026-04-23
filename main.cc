@@ -28,6 +28,7 @@ int frame_cb(v4l2_ctx_t *ctx, const v4l2_buffer_t *f, void *user)
     video_ctx_t *v = (video_ctx_t *)user;
 
     video_write(v, ctx, f);
+    video_show(ctx, f);
     id++;
     return 0;
 }
@@ -54,7 +55,7 @@ int main(int argc, char *argv[]) {
     video_ctx_t v;
     video_init(&v, &ctx);
 
-    for (int i = 0; i < 1000; i++)   // 测试100帧
+    for (int i = 0; i < 5000; i++)   // 测试100帧
     {
         int ret = v4l2_read(&ctx, frame_cb, &v);
         if (ret < 0){

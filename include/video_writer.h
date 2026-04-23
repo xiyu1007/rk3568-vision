@@ -16,6 +16,8 @@ int video_init(video_ctx_t *v, v4l2_ctx_t *ctx);
 
 int video_write(video_ctx_t *v, const v4l2_ctx_t *ctx, const v4l2_buffer_t *f);
 
+int video_show(const v4l2_ctx_t *ctx, const v4l2_buffer_t *f);
+
 void video_close(video_ctx_t *v);
 
 
