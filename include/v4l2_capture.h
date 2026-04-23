@@ -11,9 +11,9 @@
 // #ifndef V4L2_DEBUG_ENABLE
 // #define V4L2_DEBUG_ENABLE
 // #endif
-// #ifndef V4L2_LOG_ENABLE
-// #define V4L2_LOG_ENABLE
-// #endif
+#ifndef V4L2_LOG_ENABLE
+#define V4L2_LOG_ENABLE
+#endif
 #include "v4l2_log.h"
 
 

@@ -53,7 +53,7 @@ int main(int argc, char *argv[]) {
 
     video_ctx_t v;
     video_init(&v, &ctx);
-
+    
     for (int i = 0; i < 1000; i++)   // 测试100帧
     {
         int ret = v4l2_read(&ctx, frame_cb, &v);
@@ -62,7 +62,7 @@ int main(int argc, char *argv[]) {
             break;
         }else if (ret == 1) {
             /* EAGAIN，无数据，避免空转 */
-            // V4L2_LOGI("busy...");
+            V4L2_LOGI("busy...");
             usleep(5000);
         }else{
             V4L2_LOGI("cap...");
