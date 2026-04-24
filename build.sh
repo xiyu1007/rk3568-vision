@@ -1,8 +1,10 @@
 #!/bin/bash
 # 指定使用 bash 解释器执行这个脚本
 
-set -e
+clear
+
 # 开启“遇错即停”模式：任何命令执行失败，脚本立即退出，防止继续执行产生错误结果
+set -e
 
 # ROOT_PWD=$( cd "$( dirname $0 )" && cd -P "$( dirname "$SOURCE" )" && pwd )
 ROOT_PWD=$(cd "$(dirname "$0")" && pwd)

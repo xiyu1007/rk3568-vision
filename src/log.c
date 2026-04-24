@@ -1,4 +1,5 @@
 #include "log.h"
+#include "sys_lib.h"
 
 #include <stdio.h>
 #include <sys/stat.h>
@@ -27,7 +28,8 @@ static inline void get_timestamp(char *buffer, size_t size)
 /* 自动初始化（首次调用触发 inline） */
 static inline void log_init(void)
 {
-    mkdir("./tmp", 0755);
+
+    mkdir_for_file(LOG_FILE);
     if (!g_fp)
         g_fp = fopen(LOG_FILE, "a+");
 }

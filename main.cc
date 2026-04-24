@@ -22,12 +22,39 @@
 #define V4L2_BUFFER_TYPE        V4L2_BUF_TYPE_VIDEO_CAPTURE_MPLANE
 
 
+int video_show(const v4l2_ctx_t *ctx, const v4l2_buffer_t *f)
+{
+    cv::Mat img;
+
+    if (ctx->pixfmt == V4L2_PIX_FMT_MJPEG)
+    {
+        cv::Mat buf(1, f->bytesused[0], CV_8UC1, f->start[0]);
+        img = cv::imdecode(buf, cv::IMREAD_COLOR);
+    }
+    else if (ctx->pixfmt == V4L2_PIX_FMT_NV12)
+    {
+        cv::Mat yuv(ctx->height * 3 / 2,ctx->width,CV_8UC1,f->start[0]);
+        cv::cvtColor(yuv, img, cv::COLOR_YUV2BGR_NV12);
+    }
+
+    if (!img.empty())
+        cv::imshow("video", img);
+
+    cv::waitKey(1);
+
+    return 0;
+}
+
+
 int frame_cb(v4l2_ctx_t *ctx, const v4l2_buffer_t *f, void *user)
 {
     static int id = 0;
     video_ctx_t *v = (video_ctx_t *)user;
 
     video_write(v, ctx, f);
+    if (id < 20)
+        save_frame(ctx, f, id);
+
     video_show(ctx, f);
     id++;
     return 0;

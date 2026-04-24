@@ -10,30 +10,38 @@ set(OUTPUT_DIR output)
 set(CMAKE_C_FLAGS "${CMAKE_C_FLAGS} -Wall -Wextra -pthread -g")
 set(CMAKE_CXX_FLAGS "${CMAKE_CXX_FLAGS} -std=c++11")
 # 强制使用 C99 标准
-set(CMAKE_C_STANDARD 99)
-set(CMAKE_C_STANDARD_REQUIRED ON)
-set(CMAKE_C_EXTENSIONS OFF)  # 禁用 GNU 扩展，严格使用 C99
+set(CMAKE_C_STANDARD 99) # 可移植性高
+set(CMAKE_C_STANDARD_REQUIRED ON) # 如果不支持 C99，配置失败并报错，如果不支持 C99，配置失败并报错
+set(CMAKE_C_EXTENSIONS OFF)  # 禁用 GNU 扩展，严格使用 C99，不然依赖 GCC
 
 # 可选：设置调试模式（默认开启DEBUG）
 # 可以通过 cmake -DV4L2_DEBUG_ENABLE=OFF 来关闭
-option(V4L2_DEBUG_ENABLE "Enable V4L2 debug output" OFF)
-option(V4L2_LOG_ENABLE "Enable V4L2 log to file" ON)
+option(DEBUG_ENABLE "Enable V4L2 debug output" OFF)
+option(LOG_ENABLE "Enable V4L2 log to file" ON)
 
 # 根据选项添加宏定义
 if(V4L2_DEBUG_ENABLE)
-    add_definitions(-DV4L2_DEBUG_ENABLE)
+    add_definitions(-DDEBUG_ENABLE)
 endif()
 
 if(V4L2_LOG_ENABLE)
-    add_definitions(-DV4L2_LOG_ENABLE)
+    add_definitions(-DLOG_ENABLE)
 endif()
 
+# file(GLOB OPENCV_C_FILES "src/*.cc")
+# set_source_files_properties(${OPENCV_C_FILES} PROPERTIES LANGUAGE CXX)
 
 # 源文件列表（包含所有依赖）================================================
+# 使用 file(GLOB) 或逐个列出
+file(GLOB SOURCES_C "${CMAKE_CURRENT_SOURCE_DIR}/src/*.c")
 set(SOURCES
-    main.cc
-    ${CMAKE_CURRENT_SOURCE_DIR}/src/*.c
+    ${PROJECT_NAME}.cc
+    ${SOURCES_C}
 )
+
+# 生成可执行文件
+add_executable(${PROJECT_NAME} ${SOURCES})
+
 # 包含头文件目录
 include_directories(
     ${CMAKE_CURRENT_SOURCE_DIR}/include
@@ -41,8 +49,6 @@ include_directories(
     ${CMAKE_CURRENT_SOURCE_DIR}
 )
 
-# 生成可执行文件
-add_executable(${PROJECT_NAME} ${SOURCES})
 
 # 可选：设置输出目录
 set_target_properties(${PROJECT_NAME} PROPERTIES
@@ -63,7 +69,9 @@ message(STATUS "OpenCV version: ${OpenCV_VERSION}")
 message(STATUS "OpenCV include path: ${OpenCV_INCLUDE_DIRS}")
 # 链接 OpenCV
 include_directories(${OpenCV_INCLUDE_DIRS})
-target_link_libraries(${PROJECT_NAME} ${OpenCV_LIBS})
+target_link_libraries(${PROJECT_NAME} 
+    ${OpenCV_LIBS}
+)
 
 
 # 链接库
@@ -73,6 +81,6 @@ target_link_libraries(${PROJECT_NAME}
 
 
 # 打印配置信息
-message(STATUS "=> [V4L2_DEBUG_ENABLE]: ${V4L2_DEBUG_ENABLE}")
-message(STATUS "=> [V4L2_LOG_ENABLE]: ${V4L2_LOG_ENABLE}")
+message(STATUS "=> [_DEBUG_ENABLE]: ${V4L2_DEBUG_ENABLE}")
+message(STATUS "=> [LOG_ENABLE]: ${V4L2_LOG_ENABLE}")
 message(STATUS "=> [Source files]: ${SOURCES}")

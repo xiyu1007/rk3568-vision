@@ -1,21 +1,40 @@
 #ifndef __V4L2_CAPTURE_H__
 #define __V4L2_CAPTURE_H__
 
+#include "common.h"
+
 #include <time.h>
 #include <linux/videodev2.h>
 #include <stddef.h>
 #include <string.h>
 #include <stdint.h>  // 直接包含标准头文件，不需要自己定义
 
-// LOG
-// #ifndef V4L2_DEBUG_ENABLE
-// #define V4L2_DEBUG_ENABLE
-// #endif
-// #ifndef V4L2_LOG_ENABLE
-// #define V4L2_LOG_ENABLE
-// #endif
-#include "v4l2_log.h"
+#ifdef __cplusplus
+    #ifndef EXTERN_C_BEGIN
+        #define EXTERN_C_BEGIN extern "C" {
+    #endif
+    #ifndef EXTERN_C_BEGIN
+        #define EXTERN_C_END }
+    #endif
+#else
+    #define EXTERN_C_BEGIN
+    #define EXTERN_C_END
+#endif
 
+#ifdef LOGI
+    #define V4L2_LOGI LOGI
+#else
+    #define V4L2_LOGI LOGI(fmt, ...) ((void)0 )
+#endif
+
+#ifdef LOGE
+    #define V4L2_LOGE LOGE
+#else
+    #define V4L2_LOGE LOGI(fmt, ...) ((void)0 )
+#endif
+
+
+EXTERN_C_BEGIN
 
 #define CLEAR(x) memset(&(x), 0, sizeof(x))  // 清空结构体
 
@@ -59,5 +78,7 @@ int v4l2_start(v4l2_ctx_t *ctx);        // 开始视频采集
 int v4l2_read(v4l2_ctx_t *ctx, v4l2_frame_cb cb, void *user);
 
 void v4l2_stop(v4l2_ctx_t *ctx);        // 停止视频采集
+
+EXTERN_C_END
 
 #endif  // __V4L2_CAPTURE_H__

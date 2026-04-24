@@ -7,9 +7,9 @@
 #define LOG_FILE "./tmp/log.log"
 #endif
 
-#ifndef LOG_APP
-#define LOG_APP "V4L2"
-#endif
+// #ifndef LOG_APP
+// #define LOG_APP "V4L2"
+// #endif
 
 extern void logi(const char *fmt, ...);
 extern void loge(const char *fmt, ...);
