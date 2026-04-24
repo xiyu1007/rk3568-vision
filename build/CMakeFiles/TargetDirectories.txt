@@ -1,7 +1,0 @@
-/home/gx/linux/rk3568-vision/build/CMakeFiles/main.dir
-/home/gx/linux/rk3568-vision/build/CMakeFiles/edit_cache.dir
-/home/gx/linux/rk3568-vision/build/CMakeFiles/rebuild_cache.dir
-/home/gx/linux/rk3568-vision/build/CMakeFiles/list_install_components.dir
-/home/gx/linux/rk3568-vision/build/CMakeFiles/install.dir
-/home/gx/linux/rk3568-vision/build/CMakeFiles/install/local.dir
-/home/gx/linux/rk3568-vision/build/CMakeFiles/install/strip.dir

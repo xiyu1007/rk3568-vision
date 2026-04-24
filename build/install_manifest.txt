@@ -1,1 +1,0 @@
-/home/gx/linux/rk3568-vision/output/main
