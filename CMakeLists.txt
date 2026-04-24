@@ -1,5 +1,7 @@
 cmake_minimum_required(VERSION 3.10)
-project(main)
+
+set(PROJECT_NAME main)
+project(${PROJECT_NAME})
 
 # 设置C标准
 set(OUTPUT_DIR output)
@@ -19,15 +21,15 @@ option(V4L2_LOG_ENABLE "Enable V4L2 log to file" ON)
 
 # 根据选项添加宏定义
 if(V4L2_DEBUG_ENABLE)
-    # add_definitions(-DV4L2_DEBUG_ENABLE)
+    add_definitions(-DV4L2_DEBUG_ENABLE)
 endif()
 
 if(V4L2_LOG_ENABLE)
     add_definitions(-DV4L2_LOG_ENABLE)
 endif()
 
-# 源文件列表（包含所有依赖）
-# 源文件列表
+
+# 源文件列表（包含所有依赖）================================================
 set(SOURCES
     main.cc
     ${CMAKE_CURRENT_SOURCE_DIR}/src/*.c
@@ -42,20 +44,9 @@ include_directories(
 # 生成可执行文件
 add_executable(${PROJECT_NAME} ${SOURCES})
 
-
-find_package(OpenCV REQUIRED)
-include_directories(${OpenCV_INCLUDE_DIRS})
-
-target_link_libraries(app ${OpenCV_LIBS})
-
-# 链接库
-target_link_libraries(${PROJECT_NAME}
-    pthread
-)
-
 # 可选：设置输出目录
 set_target_properties(${PROJECT_NAME} PROPERTIES
-    RUNTIME_OUTPUT_DIRECTORY ${OUTPUT_DIR}/output/
+    RUNTIME_OUTPUT_DIRECTORY ${OUTPUT_DIR}/
 )
 
 
@@ -63,6 +54,23 @@ set_target_properties(${PROJECT_NAME} PROPERTIES
 install(TARGETS ${PROJECT_NAME}
     RUNTIME DESTINATION ${CMAKE_CURRENT_SOURCE_DIR}/${OUTPUT_DIR}/
 )
+
+# OpenCV ================================================
+# 查找 OpenCV
+find_package(OpenCV REQUIRED)
+# 可选：查看信息
+message(STATUS "OpenCV version: ${OpenCV_VERSION}")
+message(STATUS "OpenCV include path: ${OpenCV_INCLUDE_DIRS}")
+# 链接 OpenCV
+include_directories(${OpenCV_INCLUDE_DIRS})
+target_link_libraries(${PROJECT_NAME} ${OpenCV_LIBS})
+
+
+# 链接库
+target_link_libraries(${PROJECT_NAME}
+    pthread
+)
+
 
 # 打印配置信息
 message(STATUS "=> [V4L2_DEBUG_ENABLE]: ${V4L2_DEBUG_ENABLE}")

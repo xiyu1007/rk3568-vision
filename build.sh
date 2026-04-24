@@ -18,20 +18,18 @@ ROOT_PWD=$(cd "$(dirname "$0")" && pwd)
 # 指定 ARM64 交叉编译工具链路径（RK3568 用）
 # 这是前缀，不是完整 gcc 命令（后面会拼 -gcc / -g++）
 
+OUTPUT_DIR=${ROOT_PWD}/output/
+rm -rf ${OUTPUT_DIR}
+mkdir -p ${OUTPUT_DIR}
+
 LOG_DIR=${ROOT_PWD}/tmp/
 rm -rf ${LOG_DIR}
 mkdir -p ${LOG_DIR}
 
 # build
 BUILD_DIR=${ROOT_PWD}/build/
-# 定义构建目录（编译输出目录）
-# 在工程根目录下创建 build/build_linux_aarch64
-
 rm -rf ${BUILD_DIR}
-# 删除旧的构建目录（避免 CMakeCache 混乱）
-
 mkdir -p ${BUILD_DIR}
-# 创建新的构建目录（如果不存在则递归创建）
 
 cd ${BUILD_DIR}
 # 进入构建目录（所有编译输出都在这里）
