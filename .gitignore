@@ -5,3 +5,4 @@ tmp/
 *.mp4
 *.jpg
 build_opencv/
+opencv/
