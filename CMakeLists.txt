@@ -5,6 +5,7 @@ project(${PROJECT_NAME})
 
 # 设置C标准
 set(OUTPUT_DIR output)
+
 # 不使用任何C编译器标志,使用C++11标准进行编译
 # set(CMAKE_C_FLAGS "${CMAKE_C_FLAGS}")
 set(CMAKE_C_FLAGS "${CMAKE_C_FLAGS} -Wall -Wextra -pthread -g")
@@ -45,34 +46,58 @@ add_executable(${PROJECT_NAME} ${SOURCES})
 # 包含头文件目录
 include_directories(
     ${CMAKE_CURRENT_SOURCE_DIR}/include
-    ${CMAKE_CURRENT_SOURCE_DIR}/lib/
     ${CMAKE_CURRENT_SOURCE_DIR}
 )
 
-
 # 可选：设置输出目录
 set_target_properties(${PROJECT_NAME} PROPERTIES
-    RUNTIME_OUTPUT_DIRECTORY ${OUTPUT_DIR}/
+    RUNTIME_OUTPUT_DIRECTORY ${OUTPUT_DIR}
+    BUILD_RPATH "$ORIGIN/../third_lib/opencv/lib"
+    INSTALL_RPATH "$ORIGIN/../third_lib/opencv/lib"
 )
-
 
 # 安装可执行文件
 install(TARGETS ${PROJECT_NAME}
     RUNTIME DESTINATION ${CMAKE_CURRENT_SOURCE_DIR}/${OUTPUT_DIR}/
 )
 
-# OpenCV ================================================
-# 查找 OpenCV
+# ================================================
+# OpenCV (sudo apt install libopencv-dev 方式安装用：)
+
+# # 查找 OpenCV
+# find_package(OpenCV REQUIRED)
+# # 可选：查看信息
+# message(STATUS "OpenCV version: ${OpenCV_VERSION}")
+# message(STATUS "OpenCV include path: ${OpenCV_INCLUDE_DIRS}")
+# # 链接 OpenCV
+# include_directories(${OpenCV_INCLUDE_DIRS})
+# target_link_libraries(${PROJECT_NAME} 
+#     ${OpenCV_LIBS}
+# )
+
+# （cmake 编译安装方式用）
+set(OpenCV_DIR "${CMAKE_SOURCE_DIR}/third_lib/opencv/lib/cmake/opencv4")
 find_package(OpenCV REQUIRED)
-# 可选：查看信息
 message(STATUS "OpenCV version: ${OpenCV_VERSION}")
 message(STATUS "OpenCV include path: ${OpenCV_INCLUDE_DIRS}")
-# 链接 OpenCV
 include_directories(${OpenCV_INCLUDE_DIRS})
-target_link_libraries(${PROJECT_NAME} 
-    ${OpenCV_LIBS}
-)
+target_link_libraries(${PROJECT_NAME} ${OpenCV_LIBS})
 
+# 或者
+# set(OPENCV_PATH ${CMAKE_SOURCE_DIR}/third_lib/opencv)
+# # 头文件
+# include_directories(${OPENCV_PATH}/include/opencv4)
+# # 库目录
+# link_directories(${OPENCV_PATH}/lib)
+# # 链接库（必须手动列出）
+# target_link_libraries(${PROJECT_NAME}
+#     ${OPENCV_PATH}/lib/libopencv_core.so
+#     ${OPENCV_PATH}/lib/libopencv_imgproc.so
+#     ${OPENCV_PATH}/lib/libopencv_imgcodecs.so
+#     ${OPENCV_PATH}/lib/libopencv_videoio.so
+#     ${OPENCV_PATH}/lib/libopencv_highgui.so
+# )
+# ================================================
 
 # 链接库
 target_link_libraries(${PROJECT_NAME}
@@ -81,6 +106,6 @@ target_link_libraries(${PROJECT_NAME}
 
 
 # 打印配置信息
-message(STATUS "=> [_DEBUG_ENABLE]: ${V4L2_DEBUG_ENABLE}")
-message(STATUS "=> [LOG_ENABLE]: ${V4L2_LOG_ENABLE}")
+message(STATUS "=> [_DEBUG_ENABLE]: ${DEBUG_ENABLE}")
+message(STATUS "=> [LOG_ENABLE]: ${LOG_ENABLE}")
 message(STATUS "=> [Source files]: ${SOURCES}")

@@ -25,10 +25,12 @@ rm -rf $BUILD_DIR
 mkdir $BUILD_DIR
 cd $BUILD_DIR
 
+// 把这里加进去给rk3568编译
+# -DCMAKE_C_COMPILER=${TOOLCHAIN_PATH}/bin/${CROSS_COMPILE}-gcc \
+# -DCMAKE_CXX_COMPILER=${TOOLCHAIN_PATH}/bin/${CROSS_COMPILE}-g++ \
+# -DCMAKE_SYSROOT=${TOOLCHAIN_PATH}/${CROSS_COMPILE}/libc \
+
 cmake ../$OPENCV_SRC \
-    # -DCMAKE_C_COMPILER=${TOOLCHAIN_PATH}/bin/${CROSS_COMPILE}-gcc \
-    # -DCMAKE_CXX_COMPILER=${TOOLCHAIN_PATH}/bin/${CROSS_COMPILE}-g++ \
-    # -DCMAKE_SYSROOT=${TOOLCHAIN_PATH}/${CROSS_COMPILE}/libc \
     -DCMAKE_INSTALL_PREFIX=$(pwd)/../$INSTALL_DIR \
     -DCMAKE_BUILD_TYPE=Release \
     -DBUILD_LIST=core,imgproc,videoio,highgui,imgcodecs \
@@ -39,8 +41,6 @@ cmake ../$OPENCV_SRC \
     -DBUILD_SHARED_LIBS=ON \
     -DBUILD_EXAMPLES=OFF \
     -DBUILD_TESTS=OFF \
-    -DBUILD_ZLIB=ON \
-    -DWITH_ZLIB=OFF \
     -DBUILD_PNG=ON \
     -DWITH_PNG=ON \
     -DWITH_IPP=OFF \
@@ -48,13 +48,13 @@ cmake ../$OPENCV_SRC \
     -DWITH_ADE=OFF \
     -DBUILD_opencv_gapi=OFF \
     -DPNG_ARM_NEON=0 \
-    -DENABLE_NEON=OFF \
+    -DENABLE_NEON=OFF
 
 # 编译
-make -j4
+make -j8
 
 # 安装
 make install
 
-cd ..
+cd -
 echo "OpenCV installed to: $(pwd)/$INSTALL_DIR"

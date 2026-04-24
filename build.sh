@@ -45,7 +45,9 @@ cmake ${ROOT_PWD}
 #     -DCMAKE_C_COMPILER=${TOOLCHAIN}-gcc \
 #     -DCMAKE_CXX_COMPILER=${TOOLCHAIN}-g++
 
-make -j4
+# make VERBOSE=1
+
+make -j8
 # 开始编译（使用 4 线程并行编译，加快速度）
 
 make install

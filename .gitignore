@@ -6,3 +6,5 @@ tmp/
 *.jpg
 build_opencv/
 opencv/
+build/
+third_lib/
