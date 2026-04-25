@@ -1,11 +1,11 @@
 
-.vscode/
-output/
+/.vscode/
+/output/
 tmp/
 *.mp4
 *.jpg
-build_opencv/
-opencv/
-build/
+/build_opencv/
+/opencv/
+/build/
 # third_lib/
-share/
+/share/
