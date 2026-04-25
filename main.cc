@@ -41,7 +41,6 @@ int video_show(const v4l2_ctx_t *ctx, const v4l2_buffer_t *f)
         try {
             cv::imshow("video", img);
             cv::waitKey(1);
-            cv::waitKey(1);
         } catch (const cv::Exception& e) {
             V4L2_LOGE("imshow err...");
             cv::imwrite("/tmp/fallback_frame.jpg", img);
@@ -77,7 +76,10 @@ int main(int argc, char *argv[]) {
         .pixfmt = V4L2_FORMAT,
         .buf_type = V4L2_BUFFER_TYPE,
         .buffers = NULL,
-        .n_buffers = V4L2_BUFFER_COUNT,
+        .n_buffers = 0,
+        .n_planes = 0,
+        .stride = {0}, 
+        .sizeimage = {0},
     };
 
     if (v4l2_init(&ctx) < 0){
@@ -87,7 +89,11 @@ int main(int argc, char *argv[]) {
     if (v4l2_start(&ctx) < 0)
         return -1;
 
-    video_ctx_t v = {0};
+    video_ctx_t v = {
+        .pipe = NULL,
+        .init = 0,
+    };
+
     video_init(&v, &ctx);
 
     for (int i = 0; i < 5000; i++)   // 测试100帧

@@ -1,5 +1,7 @@
 #!/bin/bash
 
+set -e  # 遇到错误立即退出
+
 # 配置
 BUILD_DIR="build_opencv"
 INSTALL_DIR="third_lib/opencv"
@@ -30,8 +32,6 @@ cmake ../$OPENCV_SRC \
     -DWITH_IPP_A=OFF \
     -DWITH_ADE=OFF \
     -DBUILD_opencv_gapi=OFF \
-    -DPNG_ARM_NEON=OFF \
-    -DENABLE_NEON=OFF
 
 # 编译
 CPU_CORES=$(nproc)
