@@ -51,6 +51,7 @@ cd -
 # 返回到执行脚本之前的目录
 
 # 1. 检测是否有本地显示屏幕 (:0.0)
+
 # 如果 DISPLAY 为空，或者我们想强制使用 Xming，可以手动指定
 if [ -z "$DISPLAY" ]; then
     echo "No DISPLAY set. Defaulting to Xming (localhost:10.0)..."

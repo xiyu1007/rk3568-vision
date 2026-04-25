@@ -1,16 +1,6 @@
 cmake_minimum_required(VERSION 3.10)
 
 # ============================================================================
-# 项目声明 (交叉编译设置必须在此行之前完成)
-# ============================================================================
-set(PROJECT_NAME app)
-project(${PROJECT_NAME} C CXX)
-
-set(OUTPUT_DIR "${CMAKE_CURRENT_SOURCE_DIR}/share/bin")
-message(STATUS "=================================================================================")
-
-
-# ============================================================================
 # 平台检测与编译模式选择 
 # ============================================================================
 # 定义控制开关：默认 OFF。除非显式传递 -DCOMPILE_X86=ON，否则默认交叉编译 RK
@@ -53,6 +43,17 @@ if(USE_CROSS_COMPILE)
 endif()
 
 # ============================================================================
+# 项目声明 (交叉编译设置必须在此行之前完成)
+# ============================================================================
+set(PROJECT_NAME app)
+project(${PROJECT_NAME} C CXX)
+
+set(OUTPUT_DIR "${CMAKE_CURRENT_SOURCE_DIR}/share/bin")
+message(STATUS "=================================================================================")
+
+
+
+# ============================================================================
 # 3. 编译选项与标准设置
 # ============================================================================
 # 统一编译标志 (替代原 C_FLAGS/CXX_FLAGS 混写，更规范)
@@ -93,40 +94,41 @@ target_include_directories(${PROJECT_NAME} PRIVATE
 # ============================================================================
 if(USE_CROSS_COMPILE)
     # 【交叉编译模式】使用手动指定的 RK 版 OpenCV 路径
-    set(OpenCV_DIR "${CMAKE_SOURCE_DIR}/third_lib/opencv/lib/cmake/opencv4")
-    find_package(OpenCV REQUIRED) # 默认使用 CONFIG 模式（寻找 OpenCVConfig.cmake
-    message(STATUS "OpenCV version: ${OpenCV_VERSION}")
-    message(STATUS "OpenCV include path: ${OpenCV_INCLUDE_DIRS}")
-    include_directories(${OpenCV_INCLUDE_DIRS})
-    target_link_libraries(${PROJECT_NAME} ${OpenCV_LIBS})
+    # set(OpenCV_DIR "${CMAKE_SOURCE_DIR}/third_lib/opencv/lib/cmake/opencv4")
+    # find_package(OpenCV REQUIRED) # 默认使用 CONFIG 模式（寻找 OpenCVConfig.cmake
+    # message(STATUS "OpenCV version: ${OpenCV_VERSION}")
+    # message(STATUS "OpenCV include path: ${OpenCV_INCLUDE_DIRS}")
+    # include_directories(${OpenCV_INCLUDE_DIRS})
+    # target_link_libraries(${PROJECT_NAME} ${OpenCV_LIBS})
 
-    # set(OPENCV_PATH "${CMAKE_CURRENT_SOURCE_DIR}/third_lib/opencv")
-    # if(NOT EXISTS "${OPENCV_PATH}")
-    #    message(FATAL_ERROR "交叉编译 OpenCV 路径未找到: ${OPENCV_PATH}\n请先执行 build_opencv.sh")
-    # endif()
+    set(OPENCV_PATH "${CMAKE_CURRENT_SOURCE_DIR}/third_lib/opencv")
+    if(NOT EXISTS "${OPENCV_PATH}")
+       message(FATAL_ERROR "交叉编译 OpenCV 路径未找到: ${OPENCV_PATH}\n请先执行 build_opencv.sh")
+    endif()
     
-    # target_include_directories(${PROJECT_NAME} PRIVATE "${OPENCV_PATH}/include/opencv4")
-    # set(OPENCV_LIB_DIR "${OPENCV_PATH}/lib")
+    target_include_directories(${PROJECT_NAME} PRIVATE "${OPENCV_PATH}/include/opencv4")
+    set(OPENCV_LIB_DIR "${OPENCV_PATH}/lib")
     
-    # # 架构校验：防止误拷入 x86 版本的 OpenCV
-    # execute_process(
-    #    COMMAND file "${OPENCV_LIB_DIR}/libopencv_core.so"
-    #    OUTPUT_VARIABLE OPENCV_ARCH OUTPUT_STRIP_TRAILING_WHITESPACE
-    # )
-    # message(STATUS "OpenCV core arch check: ${OPENCV_ARCH}")
-    # if(OPENCV_ARCH MATCHES "x86-64")
-    #    message(FATAL_ERROR "架构校验失败！检测到 x86 版本的 OpenCV，请重新交叉编译")
-    # endif()
+    # 架构校验：防止误拷入 x86 版本的 OpenCV
+    execute_process(
+       COMMAND file "${OPENCV_LIB_DIR}/libopencv_core.so"
+       OUTPUT_VARIABLE OPENCV_ARCH OUTPUT_STRIP_TRAILING_WHITESPACE
+    )
+    message(STATUS "OpenCV core arch check: ${OPENCV_ARCH}")
+    if(OPENCV_ARCH MATCHES "x86-64")
+       message(FATAL_ERROR "架构校验失败！检测到 x86 版本的 OpenCV，请重新交叉编译")
+    endif()
     
-    # # 显式链接 RK 版 OpenCV 核心库
-    # target_link_libraries(${PROJECT_NAME} PRIVATE
-    #    "${OPENCV_LIB_DIR}/libopencv_core.so"
-    #    "${OPENCV_LIB_DIR}/libopencv_imgproc.so"
-    #    "${OPENCV_LIB_DIR}/libopencv_imgcodecs.so"
-    #    "${OPENCV_LIB_DIR}/libopencv_videoio.so"
-    #    "${OPENCV_LIB_DIR}/libopencv_highgui.so"
-    #    pthread
-    # )
+    # 显式链接 RK 版 OpenCV 核心库
+    target_link_libraries(${PROJECT_NAME} PRIVATE
+       "${OPENCV_LIB_DIR}/libopencv_core.so"
+       "${OPENCV_LIB_DIR}/libopencv_imgproc.so"
+       "${OPENCV_LIB_DIR}/libopencv_imgcodecs.so"
+       "${OPENCV_LIB_DIR}/libopencv_videoio.so"
+       "${OPENCV_LIB_DIR}/libopencv_highgui.so"
+       pthread
+    )
+
 else()
     # 【原生编译模式】(x86 Ubuntu 或 RK 本机) 使用系统 find_package
     find_package(OpenCV REQUIRED)
