@@ -47,10 +47,25 @@ cmake ${ROOT_PWD}
 
 # make VERBOSE=1
 
-make -j8
+make -j$(nproc)
 # 开始编译（使用 4 线程并行编译，加快速度）
 
 make install
 
 cd -
 # 返回到执行脚本之前的目录
+
+# 1. 检测是否有本地显示屏幕 (:0.0)
+# 如果 DISPLAY 为空，或者我们想强制使用 Xming，可以手动指定
+if [ -z "$DISPLAY" ]; then
+    echo "No DISPLAY set. Defaulting to Xming (localhost:10.0)..."
+    export DISPLAY=localhost:10.0
+elif [ "$DISPLAY" = ":0" ]; then
+    echo "No DISPLAY set. Defaulting to Xming (localhost:10.0)..."
+    export DISPLAY=localhost:10.0
+elif [ "$DISPLAY" = ":0.0" ]; then
+    # 可选：如果你想在没有物理屏幕时强制转发，可以注释掉下面这行
+    echo "Using local display :0.0"
+else
+    echo "Using existing DISPLAY: $DISPLAY"
+fi

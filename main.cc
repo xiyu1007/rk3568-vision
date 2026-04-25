@@ -16,8 +16,8 @@
 
 // /usr/include/linux/videodev2.h
 // #define V4L2_PIX_FMT_MJPEG    v4l2_fourcc('M', 'J', 'P', 'G') /* Motion-JPEG   */
-#define V4L2_FORMAT             V4L2_PIX_FMT_MJPEG // V4L2_PIX_FMT_NV12
-// #define V4L2_FORMAT             V4L2_PIX_FMT_NV12 
+// #define V4L2_FORMAT             V4L2_PIX_FMT_MJPEG // V4L2_PIX_FMT_NV12
+#define V4L2_FORMAT             V4L2_PIX_FMT_NV12 
 #define V4L2_BUFFER_COUNT       4U
 #define V4L2_BUFFER_TYPE        V4L2_BUF_TYPE_VIDEO_CAPTURE_MPLANE
 
@@ -52,8 +52,8 @@ int frame_cb(v4l2_ctx_t *ctx, const v4l2_buffer_t *f, void *user)
     video_ctx_t *v = (video_ctx_t *)user;
 
     video_write(v, ctx, f);
-    if (id < 20)
-        save_frame(ctx, f, id);
+    // if (id < 20)
+    //     save_frame(ctx, f, id);
 
     video_show(ctx, f);
     id++;
@@ -79,7 +79,7 @@ int main(int argc, char *argv[]) {
     if (v4l2_start(&ctx) < 0)
         return -1;
 
-    video_ctx_t v;
+    video_ctx_t v = {0};
     video_init(&v, &ctx);
 
     for (int i = 0; i < 5000; i++)   // 测试100帧

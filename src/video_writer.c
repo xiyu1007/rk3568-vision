@@ -24,9 +24,9 @@ int save_frame(const v4l2_ctx_t *ctx,const v4l2_buffer_t *f,int id)
             fp = fopen(name, "wb");
             if (!fp) return -1;
 
-            if (f->n_planes == 1) {
+            if (ctx->n_planes == 1) {
                 fwrite(f->start[0], 1, f->bytesused[0], fp);
-            } else if (f->n_planes == 2) {
+            } else if (ctx->n_planes == 2) {
                 fwrite(f->start[0], 1, ctx->width * ctx->height, fp);
                 fwrite(f->start[1], 1, ctx->width * ctx->height / 2, fp);
             }
@@ -81,27 +81,68 @@ int video_init(video_ctx_t *v, v4l2_ctx_t *ctx)
 }
 
 /* 写一帧到 ffmpeg stdin */
-int video_write(video_ctx_t *v,const v4l2_ctx_t *ctx,const v4l2_buffer_t *f)
+int video_write(video_ctx_t *v, const v4l2_ctx_t *ctx, const v4l2_buffer_t *f)
 {
-    if (!v->init) return -1;  // pipe 未初始化，不能写
+    if (!v || !ctx || !f || !v->init)
+        return V4L2_LOGE("video_write invalid args"), -1;
+
+    /* 通用写入（支持 stride） */
+    #define WRITE_PLANE(base, stride, w, h, tag)                                  \
+    do {                                                                          \
+        if (!(base) || (stride) < (w))                                            \
+            return V4L2_LOGE("invalid %s stride=%d width=%d", tag, stride, w), -1; \
+        if ((stride) == (w)) {                                                    \
+            size_t expect = (size_t)(w) * (h);                                    \
+            size_t n = fwrite((base), 1, expect, v->pipe);                        \
+            if (n != expect)                                                      \
+                return V4L2_LOGE("%s write failed: %zu, expected %zu", tag, n, expect), -1; \
+        } else {                                                                  \
+            for (int y = 0; y < (h); y++) {                                       \
+                size_t n = fwrite((base) + y * (stride), 1, (w), v->pipe);        \
+                if (n != (size_t)(w))                                             \
+                    return V4L2_LOGE("%s write failed: %zu, expected %d", tag, n, w), -1; \
+            }                                                                     \
+        }                                                                         \
+    } while (0)
+
     switch (ctx->pixfmt)
     {
         case V4L2_PIX_FMT_MJPEG:
-            fwrite(f->start[0], 1, f->bytesused[0], v->pipe);
-            break;
-        case V4L2_PIX_FMT_NV12:
-            if (f->n_planes == 1) 
-                fwrite(f->start[0], 1, f->bytesused[0], v->pipe);
-            else if (f->n_planes == 2) { // NV12
-                fwrite(f->start[0], 1, ctx->width * ctx->height, v->pipe);       // 写 Y
-                fwrite(f->start[1], 1, ctx->width * ctx->height / 2, v->pipe);   // 写 UV
-            }
-            break;
-        default:
-            return -1;  // 不支持的格式
-    }
+        {
+            size_t sz = f->bytesused[0];
+            if (!f->start[0] || sz == 0)
+                return V4L2_LOGE("[video_write] MJPEG empty buffer"), -1;
 
-    return 0;
+            size_t n = fwrite(f->start[0], 1, sz, v->pipe);
+            return (n == sz) ? 0 :
+                (V4L2_LOGE("video_write MJPEG write failed: %zu, expected %zu", n, sz), -1);
+        }
+
+        case V4L2_PIX_FMT_NV12:
+        {
+            int w = ctx->width, h = ctx->height;
+
+            if (ctx->n_planes == 1) {
+                uint8_t *base = (uint8_t*)f->start[0];
+                int stride = ctx->stride[0];
+
+                WRITE_PLANE(base, stride, w, h, "Y");
+                WRITE_PLANE(base + stride * h, stride, w, h / 2, "UV");
+            }
+            else if (ctx->n_planes == 2) {
+                WRITE_PLANE((uint8_t*)f->start[0], ctx->stride[0], w, h, "Y");
+                WRITE_PLANE((uint8_t*)f->start[1], ctx->stride[1], w, h / 2, "UV");
+            }
+            else {
+                return V4L2_LOGE("video_write invalid n_planes=%d", ctx->n_planes), -1;
+            }
+
+            return 0;
+        }
+
+        default:
+            return V4L2_LOGE("video_write unsupported pixfmt"), -1;
+    }
 }
 
 void video_close(video_ctx_t *v)
