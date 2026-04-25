@@ -49,7 +49,7 @@ static int query_cap(v4l2_ctx_t *ctx)
     else
         return V4L2_LOGE("no capture"), -1;                  // 不支持采集
 
-    V4L2_LOGI("query_cap buf_type: %s", c & V4L2_CAP_VIDEO_CAPTURE ? "SINGLE PLANE" : "MPLANE");
+    V4L2_LOGI("query_cap buf_type: %s", c & V4L2_CAP_VIDEO_CAPTURE_MPLANE ? "MPLANE" : "SINGLE PLANE");
 
     // 检查是否支持流式IO
     return (c & V4L2_CAP_STREAMING) ? (V4L2_LOGI("query_cap Streaming I/O supported"), 0) : (V4L2_LOGE("no stream"), -1);
@@ -74,6 +74,17 @@ static int set_format(v4l2_ctx_t *ctx)
         return (V4L2_LOGE("set_format FMT err=%d", errno), -1);
     }
 
+    ctx->n_planes = fmt.fmt.pix_mp.num_planes;
+    V4L2_LOGI("set_format n_planes=%d", ctx->n_planes);
+
+    if (ctx->buf_type == V4L2_BUF_TYPE_VIDEO_CAPTURE_MPLANE) {
+        for (int i = 0; i < ctx->n_planes; i++) {
+            ctx->stride[i] = fmt.fmt.pix_mp.plane_fmt[i].bytesperline;
+            ctx->sizeimage[i] = fmt.fmt.pix_mp.plane_fmt[i].sizeimage;
+            V4L2_LOGI("set_format plane[%d]: stride=%d sizeimage=%d", i, ctx->stride[i], ctx->sizeimage[i]);
+        }
+    }
+
     // 打印设置后的值（驱动可能修改了）
     V4L2_LOGI("set_format FMT:  %dx%d, format=%c%c%c%c",
            fmt.fmt.pix_mp.width, fmt.fmt.pix_mp.height,
@@ -89,6 +100,36 @@ static int set_format(v4l2_ctx_t *ctx)
     return 0;
 }
 
+/* 设置帧率 */
+static int set_fps(v4l2_ctx_t *ctx)
+{
+    struct v4l2_streamparm parm;
+    CLEAR(parm);
+
+    parm.type = ctx->buf_type;
+    if (xioctl(ctx->fd, VIDIOC_G_PARM, &parm) < 0){
+        if (errno == ENOTTY)
+            return 0;
+        return V4L2_LOGE("set_fps G_PARM err=%d", errno), -1;
+    }
+
+    if (!(parm.parm.capture.capability & V4L2_CAP_TIMEPERFRAME)) {
+        V4L2_LOGI("set_fps fps not supported");
+        return 0;
+    }
+
+    parm.parm.capture.timeperframe.numerator = 1;
+    parm.parm.capture.timeperframe.denominator = ctx->fps;
+
+    if (xioctl(ctx->fd, VIDIOC_S_PARM, &parm) < 0)
+        return V4L2_LOGE("set_fps S_PARM err=%d", errno), -1;
+
+    ctx->fps = parm.parm.capture.timeperframe.denominator;
+
+    V4L2_LOGI("set_fps FPS=%d", ctx->fps);
+    return 0;
+}
+
 /* 初始化MMAP内存映射 */
 static int init_mmap(v4l2_ctx_t *ctx)
 {
@@ -101,6 +142,8 @@ static int init_mmap(v4l2_ctx_t *ctx)
 
     if (xioctl(ctx->fd, VIDIOC_REQBUFS, &req) < 0)      // 请求缓冲区
         return V4L2_LOGE("init_mmap REQBUFS err=%d", errno), -1;
+
+    V4L2_LOGI("init_mmap REQBUFS num=%d", req.count);
 
     // 分配缓冲区数组并保存实际分配的数量
     ctx->buffers = (v4l2_buffer_t *)calloc(req.count, sizeof(v4l2_buffer_t));
@@ -120,7 +163,7 @@ static int init_mmap(v4l2_ctx_t *ctx)
 
         // 如果是多平面格式，设置planes数组
         if (ctx->buf_type == V4L2_BUF_TYPE_VIDEO_CAPTURE_MPLANE) {
-            buf.m.planes = planes;
+            buf.m.planes = planes;                  // 注意这里指针指向了planes，后续planes会因VIDIOC_QUERYBUF变化
             buf.length = VIDEO_MAX_PLANES;          // 最大平面数
         }
 
@@ -134,23 +177,26 @@ static int init_mmap(v4l2_ctx_t *ctx)
         int cnt = mplane ? buf.length : 1;
 
         // 当前 buffer 有多少个 plane， queue_all中使用
-        ctx->buffers[i].n_planes = cnt;              // 保存平面数量
+        // 与 set_format 不匹配
+        if (ctx->n_planes != cnt) {
+            V4L2_LOGE("init_mmap plane mismatch: ctx=%d buf=%d", ctx->n_planes, cnt);
+            return -1;
+        }
 
-                // 打印缓冲区信息
+        // 打印缓冲区信息
         V4L2_LOGI("init_mmap Buffer[%d]: n_planes=%d, type=%s", i, cnt, mplane ? "MPLANE" : "SINGLE");
 
         // 遍历每个平面进行内存映射
         for (int p = 0; p < cnt; p++) {
-
             // 获取缓冲区长度：多平面从planes获取，单平面从buf获取
-            // 当前 buffer 有多少个 字节
-            ctx->buffers[i].bytesused[p] =
-                mplane ? planes[p].bytesused : buf.length;
+            // mmap长度（固定）,最大映射长度
+            ctx->buffers[i].length[p] =
+                mplane ? planes[p].length : buf.length; 
 
             // mmap内存映射，将内核空间映射到用户空间
             ctx->buffers[i].start[p] =
                 mmap(NULL,
-                     ctx->buffers[i].bytesused[p],          // 映射长度
+                     ctx->buffers[i].length[p],          // 映射长度
                      PROT_READ | PROT_WRITE,              // 读写权限
                      MAP_SHARED,                          // 共享映射
                      ctx->fd,
@@ -160,7 +206,7 @@ static int init_mmap(v4l2_ctx_t *ctx)
                 return V4L2_LOGE("init_mmap mmap i=%d p=%d err=%d", i, p, errno), -1;
 
             // 打印每个平面的映射信息
-            V4L2_LOGI("init_mmap Plane[%d]: size=%zu bytes, offset=%ju, start=%p",p, ctx->buffers[i].bytesused[p],
+            V4L2_LOGI("init_mmap Plane[%d]: size=%zu bytes, offset=%ju, start=%p",p, ctx->buffers[i].length[p],
                       (uintmax_t)(mplane ? planes[p].m.mem_offset : buf.m.offset),
                       ctx->buffers[i].start[p]);
         }
@@ -188,11 +234,11 @@ static int queue_all(v4l2_ctx_t *ctx)
         // 多平面格式需要设置planes和长度
         if (ctx->buf_type == V4L2_BUF_TYPE_VIDEO_CAPTURE_MPLANE) {
             buf.m.planes = planes;
-            buf.bytesused = ctx->buffers[i].n_planes;  // 平面数量
+            buf.length = ctx->n_planes;  // 平面数量
 
             // 设置每个平面的长度
-            for (uint32_t p = 0; p < buf.bytesused; p++)
-                planes[p].bytesused = ctx->buffers[i].bytesused[p];
+            for (uint32_t p = 0; p < buf.length; p++)
+                planes[p].length = ctx->buffers[i].length[p];
         }
 
         if (xioctl(ctx->fd, VIDIOC_QBUF, &buf) < 0)  // 入队缓冲区
@@ -205,23 +251,6 @@ static int queue_all(v4l2_ctx_t *ctx)
     return 0;
 }
 
-/* 设置帧率 */
-static int set_fps(v4l2_ctx_t *ctx)
-{
-    struct v4l2_streamparm parm;  // 流参数结构体
-    CLEAR(parm);
-
-    parm.type = ctx->buf_type;     // 缓冲区类型
-    // 设置帧率：numerator/denominator = fps
-    parm.parm.capture.timeperframe.numerator = 1;           // 分子
-    parm.parm.capture.timeperframe.denominator = ctx->fps;  // 分母
-
-    if (xioctl(ctx->fd, VIDIOC_S_PARM, &parm) < 0)  // 设置参数
-
-    V4L2_LOGI("set_fps FPS=%.2f", (float)parm.parm.capture.timeperframe.denominator);
-
-    return 0;
-}
 
 /* 初始化V4L2设备（主函数） */
 int v4l2_init(v4l2_ctx_t *ctx)
@@ -262,7 +291,7 @@ int v4l2_read(v4l2_ctx_t *ctx, v4l2_frame_cb cb, void *user)
 
     if (ctx->buf_type == V4L2_BUF_TYPE_VIDEO_CAPTURE_MPLANE) {
         buf.m.planes = planes;
-        buf.bytesused = VIDEO_MAX_PLANES;
+        buf.length = VIDEO_MAX_PLANES;
     }
 
     if (xioctl(ctx->fd, VIDIOC_DQBUF, &buf) < 0)
@@ -271,22 +300,28 @@ int v4l2_read(v4l2_ctx_t *ctx, v4l2_frame_cb cb, void *user)
     int idx = buf.index;
 
     int cnt = (ctx->buf_type == V4L2_BUF_TYPE_VIDEO_CAPTURE_MPLANE)
-            ? ctx->buffers[idx].n_planes : 1;
-
-    frame.n_planes = cnt;
+            ? ctx->n_planes : 1;
 
     for (int i = 0; i < cnt; i++) {
         frame.start[i] = (uint8_t *)ctx->buffers[idx].start[i];
         frame.bytesused[i]  = (ctx->buf_type == V4L2_BUF_TYPE_VIDEO_CAPTURE_MPLANE)
                   ? buf.m.planes[i].bytesused // 多平面
-                  : buf.length ;              // 单品面
+                  : buf.bytesused ;              // 单品面
     }
 
     /* 用户处理（核心扩展点） */
     if (cb) cb(ctx, &frame, user);
 
+    // 重新入队前，需要重新设置 length（因为 DQBUF 后内核可能修改了）
+    // if (ctx->buf_type == V4L2_BUF_TYPE_VIDEO_CAPTURE_MPLANE) {
+    //     for (int i = 0; i < ctx->n_planes; i++) {
+    //         buf.m.planes[i].length = ctx->buffers[idx].length[i];
+    //     }
+    // }
+
+    // VIDIOC_DQBUF已经修改 planes.length
     /* 立即归还，重新入队， buffer */
-    return xioctl(ctx->fd, VIDIOC_QBUF, &buf) < 0 ? (V4L2_LOGE("v4l2_read QBUF err=%d", errno),-1) : 0;
+    return xioctl(ctx->fd, VIDIOC_QBUF, &buf) < 0 ? (V4L2_LOGE("v4l2_read QBUF err=%d", errno), -1) : 0;
 
 }
 
@@ -300,9 +335,9 @@ void v4l2_stop(v4l2_ctx_t *ctx)
 
     // 解映射所有缓冲区
     for (int i = 0; i < ctx->n_buffers; i++)
-        for (int p = 0; p < ctx->buffers[i].n_planes; p++)
+        for (int p = 0; p < ctx->n_planes; p++)
             munmap(ctx->buffers[i].start[p],    // 起始地址
-                   ctx->buffers[i].bytesused[p]);  // 映射长度
+                   ctx->buffers[i].length[p]);  // 映射长度
 
     free(ctx->buffers);   // 释放缓冲区数组
     ctx->buffers = NULL;

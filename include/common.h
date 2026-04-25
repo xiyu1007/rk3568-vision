@@ -10,6 +10,10 @@
     #define EXTERN_C_END
 #endif
 
+#ifndef LOG_ENABLE
+#define LOG_ENABLE
+#endif
+
 // 优先级：DEBUG > LOG > 关闭
 #if defined(DEBUG_ENABLE)
     // 调试模式：输出到控制台
@@ -29,6 +33,14 @@
     // 关闭所有日志：空宏
     #define LOGI(fmt, ...) ((void)0 )
     #define LOGE(fmt, ...) ((void)0 )
+#endif
+
+#ifdef __GNUC__
+#define likely(x)   __builtin_expect(!!(x), 1)
+#define unlikely(x) __builtin_expect(!!(x), 0)
+#else
+#define likely(x)   (x)
+#define unlikely(x) (x)
 #endif
 
 #endif /* __COMMON_H__ */

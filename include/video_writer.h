@@ -4,7 +4,9 @@
 #include "v4l2_capture.h"
 #include <stdio.h>  // 添加这一行
 
-EXTERN_C_BEGIN
+#ifdef __cplusplus
+extern "C" {
+#endif
 
 typedef struct {
     FILE *pipe;
@@ -19,6 +21,8 @@ int video_write(video_ctx_t *v, const v4l2_ctx_t *ctx, const v4l2_buffer_t *f);
 
 void video_close(video_ctx_t *v);
 
-EXTERN_C_END
+#ifdef __cplusplus
+}
+#endif
 
 #endif /* __VIDEO_WRITER_H__ */

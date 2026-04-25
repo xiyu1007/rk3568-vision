@@ -64,24 +64,25 @@ install(TARGETS ${PROJECT_NAME}
 # ================================================
 # OpenCV (sudo apt install libopencv-dev 方式安装用：)
 
-# # 查找 OpenCV
-# find_package(OpenCV REQUIRED)
-# # 可选：查看信息
-# message(STATUS "OpenCV version: ${OpenCV_VERSION}")
-# message(STATUS "OpenCV include path: ${OpenCV_INCLUDE_DIRS}")
-# # 链接 OpenCV
-# include_directories(${OpenCV_INCLUDE_DIRS})
-# target_link_libraries(${PROJECT_NAME} 
-#     ${OpenCV_LIBS}
-# )
-
-# （cmake 编译安装方式用）
-set(OpenCV_DIR "${CMAKE_SOURCE_DIR}/third_lib/opencv/lib/cmake/opencv4")
+# 查找 OpenCV
 find_package(OpenCV REQUIRED)
+# 可选：查看信息
+message(STATUS "=================================================================================")
 message(STATUS "OpenCV version: ${OpenCV_VERSION}")
 message(STATUS "OpenCV include path: ${OpenCV_INCLUDE_DIRS}")
+# 链接 OpenCV
 include_directories(${OpenCV_INCLUDE_DIRS})
-target_link_libraries(${PROJECT_NAME} ${OpenCV_LIBS})
+target_link_libraries(${PROJECT_NAME} 
+    ${OpenCV_LIBS}
+)
+
+# （cmake 编译安装方式用）
+# set(OpenCV_DIR "${CMAKE_SOURCE_DIR}/third_lib/opencv/lib/cmake/opencv4")
+# find_package(OpenCV REQUIRED)
+# message(STATUS "OpenCV version: ${OpenCV_VERSION}")
+# message(STATUS "OpenCV include path: ${OpenCV_INCLUDE_DIRS}")
+# include_directories(${OpenCV_INCLUDE_DIRS})
+# target_link_libraries(${PROJECT_NAME} ${OpenCV_LIBS})
 
 # 或者
 # set(OPENCV_PATH ${CMAKE_SOURCE_DIR}/third_lib/opencv)
@@ -109,3 +110,4 @@ target_link_libraries(${PROJECT_NAME}
 message(STATUS "=> [_DEBUG_ENABLE]: ${DEBUG_ENABLE}")
 message(STATUS "=> [LOG_ENABLE]: ${LOG_ENABLE}")
 message(STATUS "=> [Source files]: ${SOURCES}")
+message(STATUS "=================================================================================")
