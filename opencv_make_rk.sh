@@ -1,90 +1,62 @@
 #!/bin/bash
+set -e  # 遇到错误立即退出
 
-# 配置
-BUILD_DIR="build_opencv"
-INSTALL_DIR="third_lib/opencv_rk"
+# ================= 配置区 =================
 OPENCV_SRC="opencv"
+BUILD_DIR="build_opencv"
+INSTALL_DIR="$(pwd)/third_lib/opencv"  
 
-# 交叉编译工具链路径
-TOOLCHAIN_PATH="/usr/local/arm64/arm-gnu-toolchain-15.2.rel1-x86_64-aarch64-none-linux-gnu"
-CROSS_COMPILE="aarch64-none-linux-gnu"
+TOOLCHAIN_PATH="/usr/local/arm64/gcc-linaro-7.5.0-2019.12-x86_64_aarch64-linux-gnu"
+SYSROOT="/home/gx/linux/rk3568/rk3568-vision/sysroot-glibc-linaro-2.25-2019.12-aarch64-linux-gnu"
+CROSS_COMPILE="aarch64-linux-gnu"
 
-set -e
+# 清理旧构建
+rm -rf "$BUILD_DIR"
+mkdir -p "$BUILD_DIR"
+cd "$BUILD_DIR"
 
-# 清理环境变量（避免冲突）
-unset CPLUS_INCLUDE_PATH
-unset C_INCLUDE_PATH
-unset LIBRARY_PATH
-unset CPATH
+# 【关键】强制 pkg-config 只在 sysroot 中搜索依赖（解决 GTK 找 x86 的问题）
+export PKG_CONFIG_LIBDIR="${SYSROOT}/usr/lib/pkgconfig:${SYSROOT}/usr/share/pkgconfig"
+export PKG_CONFIG_SYSROOT_DIR="${SYSROOT}"
 
-# 清理构建目录
-rm -rf $BUILD_DIR
-mkdir $BUILD_DIR
-cd $BUILD_DIR
-
-# CMake 配置
-cmake ../$OPENCV_SRC \
-    -DCMAKE_INSTALL_PREFIX=$(pwd)/../$INSTALL_DIR \
+cmake ../"$OPENCV_SRC" \
+    -DCMAKE_INSTALL_PREFIX="$INSTALL_DIR" \
     -DCMAKE_BUILD_TYPE=Release \
-    -DCMAKE_C_COMPILER=${TOOLCHAIN_PATH}/bin/${CROSS_COMPILE}-gcc \
-    -DCMAKE_CXX_COMPILER=${TOOLCHAIN_PATH}/bin/${CROSS_COMPILE}-g++ \
-    -DCMAKE_SYSROOT=${TOOLCHAIN_PATH}/${CROSS_COMPILE}/libc \
-    -DCMAKE_FIND_ROOT_PATH=${TOOLCHAIN_PATH}/${CROSS_COMPILE}/libc \
+    -DCMAKE_SYSTEM_NAME=Linux \
+    -DCMAKE_SYSTEM_PROCESSOR=aarch64 \
+    -DCMAKE_C_COMPILER="${TOOLCHAIN_PATH}/bin/${CROSS_COMPILE}-gcc" \
+    -DCMAKE_CXX_COMPILER="${TOOLCHAIN_PATH}/bin/${CROSS_COMPILE}-g++" \
+    -DCMAKE_SYSROOT="${SYSROOT}" \
+    -DCMAKE_FIND_ROOT_PATH="${SYSROOT}" \
     -DCMAKE_FIND_ROOT_PATH_MODE_PROGRAM=NEVER \
     -DCMAKE_FIND_ROOT_PATH_MODE_LIBRARY=ONLY \
     -DCMAKE_FIND_ROOT_PATH_MODE_INCLUDE=ONLY \
-    \
-    -DOPENCV_DOWNLOAD_DISABLE=ON \
-    \
+    -DCMAKE_FIND_ROOT_PATH_MODE_PACKAGE=ONLY \
     -DBUILD_LIST=core,imgproc,videoio,highgui,imgcodecs \
-    -DBUILD_SHARED_LIBS=ON \
-    -DBUILD_EXAMPLES=OFF \
-    -DBUILD_TESTS=OFF \
-    -DBUILD_PERF_TESTS=OFF \
-    -DBUILD_opencv_gapi=OFF \
-    -DBUILD_opencv_highgui=ON \
-    \
+    -DOPENCV_DOWNLOAD_DISABLE=ON \
     -DWITH_V4L=ON \
-    -DWITH_FFMPEG=OFF \
-    -DWITH_GSTREAMER=OFF \
-    -DWITH_GTK=OFF \
-    -DBUILD_opencv_highgui=ON \
+    -DWITH_FFMPEG=ON \
+    -DWITH_GSTREAMER=ON \
     -DWITH_GTK=ON \
     -DWITH_GTK_2_X=ON \
+    -DBUILD_SHARED_LIBS=ON \
+    -DBUILD_PNG=ON \
+    -DWITH_PNG=ON \
+    -DBUILD_EXAMPLES=OFF \
+    -DBUILD_TESTS=OFF \
     -DWITH_IPP=OFF \
+    -DWITH_IPP_A=OFF \
     -DWITH_ADE=OFF \
-    \
-    -DBUILD_ZLIB=ON \
-    -DBUILD_JPEG=ON \
-    -DBUILD_PNG=OFF \
-    -DBUILD_TIFF=OFF \
-    \
-    -DWITH_PNG=OFF \
-    -DWITH_JPEG=ON \
-    -DWITH_TIFF=OFF \
-    \
-    -DENABLE_NEON=OFF \
-    -DWITH_NEON=OFF \
-    -DENABLE_VFPV3=OFF \
-    -DCV_DISABLE_OPTIMIZATION=ON \
-    -DCPU_BASELINE="ARMV8" \
-    -DCPU_DISPATCH="" \
-    \
-    -DPNG_ARM_NEON=0 \
-    -DCMAKE_C_FLAGS="-DPNG_NO_NEON -DPNG_ARM_NEON_OPT=0" \
-    -DCMAKE_CXX_FLAGS="-DPNG_NO_NEON -DPNG_ARM_NEON_OPT=0"
+    -DBUILD_opencv_gapi=OFF
 
-# 编译（使用多线程）
-CPU_CORES=$(nproc)
-make -j${CPU_CORES}
+# 编译
+make -j$(nproc)
 
 # 安装
 make install
 
-cd -
+cd ..
 echo "=========================================="
-echo "OpenCV installed to: $(pwd)/$INSTALL_DIR"
+echo " OpenCV installed to: $INSTALL_DIR"
 echo "=========================================="
-
-# 显示库文件
-ls -la $(pwd)/$INSTALL_DIR/lib/
+ls -la "$INSTALL_DIR/lib/"

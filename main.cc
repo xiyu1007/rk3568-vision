@@ -37,10 +37,18 @@ int video_show(const v4l2_ctx_t *ctx, const v4l2_buffer_t *f)
         cv::cvtColor(yuv, img, cv::COLOR_YUV2BGR_NV12);
     }
 
-    if (!img.empty())
-        cv::imshow("video", img);
+    if (!img.empty()){
+        try {
+            cv::imshow("video", img);
+            cv::waitKey(1);
+            cv::waitKey(1);
+        } catch (const cv::Exception& e) {
+            V4L2_LOGE("imshow err...");
+            cv::imwrite("/tmp/fallback_frame.jpg", img);
+        }
+    }
 
-    cv::waitKey(1);
+
 
     return 0;
 }
@@ -51,7 +59,8 @@ int frame_cb(v4l2_ctx_t *ctx, const v4l2_buffer_t *f, void *user)
     static int id = 0;
     video_ctx_t *v = (video_ctx_t *)user;
 
-    video_write(v, ctx, f);
+    if (video_write(v, ctx, f) == -1)
+        V4L2_LOGE("video_write err...");
     // if (id < 20)
     //     save_frame(ctx, f, id);
 
@@ -74,8 +83,10 @@ int main(int argc, char *argv[]) {
         .n_buffers = V4L2_BUFFER_COUNT,
     };
 
-    if (v4l2_init(&ctx) < 0)
+    if (v4l2_init(&ctx) < 0){
+        V4L2_LOGE("v4l2_init err...");
         return -1;
+    }
     if (v4l2_start(&ctx) < 0)
         return -1;
 

@@ -5,11 +5,6 @@ BUILD_DIR="build_opencv"
 INSTALL_DIR="third_lib/opencv"
 OPENCV_SRC="opencv"
 
-unset CPLUS_INCLUDE_PATH
-unset C_INCLUDE_PATH
-unset LIBRARY_PATH
-unset CPATH
-
 # 清理
 rm -rf $BUILD_DIR
 mkdir $BUILD_DIR
