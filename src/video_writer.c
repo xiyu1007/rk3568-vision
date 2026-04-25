@@ -86,6 +86,14 @@ int video_write(video_ctx_t *v, const v4l2_ctx_t *ctx, const v4l2_buffer_t *f)
     if (!v || !ctx || !f || !v->init)
         return V4L2_LOGE("video_write invalid args"), -1;
 
+    V4L2_LOGE("fmt=%08x w=%d h=%d planes=%d",
+        ctx->pixfmt, ctx->width, ctx->height, ctx->n_planes);
+
+    for (int i = 0; i < ctx->n_planes; i++) {
+        V4L2_LOGE("plane[%d]: stride=%d bytesused=%d length=%d",
+            i, ctx->stride[i], f->bytesused[i], f->length[i]);
+    }
+
     /* 通用写入（支持 stride） */
     #define WRITE_PLANE(base, stride, w, h, tag)                                  \
     do {                                                                          \

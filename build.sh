@@ -14,15 +14,10 @@ ROOT_PWD=$(cd "$(dirname "$0")" && pwd)
 # cd -P：进入真实路径（解析软链接）
 # pwd：输出绝对路径
 
-# for aarch64
-# TOOLCHAIN=/usr/local/arm/gcc-linaro-4.9.4-2017.01-x86_64_arm-linux-gnueabihf/bin/arm-linux-gnueabihf
-# TOOLCHAIN=/usr/bin/gcc
-# 指定 ARM64 交叉编译工具链路径（RK3568 用）
-# 这是前缀，不是完整 gcc 命令（后面会拼 -gcc / -g++）
+LOG_DIR=${ROOT_PWD}/share/bin
+rm -rf ${LOG_DIR}
+mkdir -p ${LOG_DIR}
 
-OUTPUT_DIR=${ROOT_PWD}/output/
-rm -rf ${OUTPUT_DIR}
-mkdir -p ${OUTPUT_DIR}
 
 LOG_DIR=${ROOT_PWD}/tmp/
 rm -rf ${LOG_DIR}
