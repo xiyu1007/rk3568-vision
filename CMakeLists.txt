@@ -4,7 +4,7 @@ cmake_minimum_required(VERSION 3.10)
 # 平台检测与编译模式选择 
 # ============================================================================
 # 定义控制开关：默认 OFF。除非显式传递 -DCOMPILE_X86=ON，否则默认交叉编译 RK
-option(COMPILE_X86 "明确指定编译 x86 版本 (默认 OFF -> 交叉编译 RK3568)" ON)
+option(COMPILE_X86 "明确指定编译 x86 版本 (默认 OFF -> 交叉编译 RK3568)" OFF)
 option(USE_CUSTOM_OPENCV "指定是否使用自己build的opencv" ON)
 
 # 自动检测宿主机 CPU 架构
@@ -20,6 +20,7 @@ else()
         message(STATUS "Host: x86_64 | Mode: Native x86 (显式指定 -DCOMPILE_X86=ON)")
     else()
         set(USE_CROSS_COMPILE ON)
+        add_definitions(-DCROSS_COMPILE)
         message(STATUS "Host: x86_64 | Mode: Cross Compile for RK3568 (默认行为)")
     endif()
 endif()
@@ -80,9 +81,11 @@ endif()
 # 源文件列表
 # ============================================================================
 file(GLOB SRC_C src/*.c)
+file(GLOB SRC_CC src/*.cc)
 add_executable(${PROJECT_NAME}
     main.cc
     ${SRC_C}
+    ${SRC_CC}
 )
 
 target_include_directories(${PROJECT_NAME} PRIVATE

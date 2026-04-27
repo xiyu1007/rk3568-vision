@@ -3,6 +3,7 @@
 
 #include "v4l2_capture.h"
 #include "video_writer.h"
+#include "fps.h"
 
 #include <stdio.h>
 #include <unistd.h>  // 提供 sleep/usleep 函数
@@ -16,8 +17,11 @@
 
 // /usr/include/linux/videodev2.h
 // #define V4L2_PIX_FMT_MJPEG    v4l2_fourcc('M', 'J', 'P', 'G') /* Motion-JPEG   */
+#ifdef CROSS_COMPILE
+#define V4L2_FORMAT             V4L2_PIX_FMT_NV12 
+#else
 #define V4L2_FORMAT             V4L2_PIX_FMT_MJPEG // V4L2_PIX_FMT_NV12
-// #define V4L2_FORMAT             V4L2_PIX_FMT_NV12 
+#endif
 #define V4L2_BUFFER_COUNT       4U
 #define V4L2_BUFFER_TYPE        V4L2_BUF_TYPE_VIDEO_CAPTURE_MPLANE
 
@@ -38,6 +42,7 @@ int video_show(const v4l2_ctx_t *ctx, const v4l2_buffer_t *f)
     }
 
     if (!img.empty()){
+        fps_show(img);                 // 使用所有默认参数！
         try {
             cv::imshow("video", img);
             cv::waitKey(1);
@@ -65,7 +70,8 @@ int frame_cb(v4l2_ctx_t *ctx, const v4l2_buffer_t *f, void *user)
         V4L2_LOGE("video_write err...");
     // if (id < 20)
     //     save_frame(ctx, f, id);
-
+            
+    fps_update();                                    // 刷新计算
     video_show(ctx, f);
     id++;
     return 0;

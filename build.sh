@@ -66,7 +66,7 @@ if grep -qi WSL /proc/version 2>/dev/null; then
 else
     if [ -z "$DISPLAY" ]; then
         echo "Local machine with no DISPLAY, fallback to :0"
-        export localhost:10.0
+        export DISPLAY=localhost:10.0
     else
         echo "Local machine, using DISPLAY: $DISPLAY"
     fi
