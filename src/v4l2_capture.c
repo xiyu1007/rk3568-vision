@@ -74,7 +74,7 @@ static int set_format(v4l2_ctx_t *ctx)
         return (V4L2_LOGE("set_format FMT err=%d", errno), -1);
     }
 
-    ctx->n_planes = fmt.fmt.pix_mp.num_planes;
+    ctx->n_planes = fmt.fmt.pix_mp.num_planes ? fmt.fmt.pix_mp.num_planes : 1;
     V4L2_LOGI("set_format n_planes=%d", ctx->n_planes);
 
     if (ctx->buf_type == V4L2_BUF_TYPE_VIDEO_CAPTURE_MPLANE) {

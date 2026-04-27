@@ -16,8 +16,8 @@
 
 // /usr/include/linux/videodev2.h
 // #define V4L2_PIX_FMT_MJPEG    v4l2_fourcc('M', 'J', 'P', 'G') /* Motion-JPEG   */
-// #define V4L2_FORMAT             V4L2_PIX_FMT_MJPEG // V4L2_PIX_FMT_NV12
-#define V4L2_FORMAT             V4L2_PIX_FMT_NV12 
+#define V4L2_FORMAT             V4L2_PIX_FMT_MJPEG // V4L2_PIX_FMT_NV12
+// #define V4L2_FORMAT             V4L2_PIX_FMT_NV12 
 #define V4L2_BUFFER_COUNT       4U
 #define V4L2_BUFFER_TYPE        V4L2_BUF_TYPE_VIDEO_CAPTURE_MPLANE
 
@@ -41,7 +41,13 @@ int video_show(const v4l2_ctx_t *ctx, const v4l2_buffer_t *f)
         try {
             cv::imshow("video", img);
             cv::waitKey(1);
+            V4L2_LOGI("imshow ");
         } catch (const cv::Exception& e) {
+            V4L2_LOGE("imshow exception:");
+            V4L2_LOGE("msg: %s", e.what());
+            V4L2_LOGE("func: %s", e.func.c_str());
+            V4L2_LOGE("file: %s", e.file.c_str());
+            V4L2_LOGE("line: %d", e.line);
             V4L2_LOGE("imshow err...");
             cv::imwrite("/tmp/fallback_frame.jpg", img);
         }

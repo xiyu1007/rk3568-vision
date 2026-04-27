@@ -4,7 +4,8 @@ cmake_minimum_required(VERSION 3.10)
 # 平台检测与编译模式选择 
 # ============================================================================
 # 定义控制开关：默认 OFF。除非显式传递 -DCOMPILE_X86=ON，否则默认交叉编译 RK
-option(COMPILE_X86 "明确指定编译 x86 版本 (默认 OFF -> 交叉编译 RK3568)" OFF)
+option(COMPILE_X86 "明确指定编译 x86 版本 (默认 OFF -> 交叉编译 RK3568)" ON)
+option(USE_CUSTOM_OPENCV "指定是否使用自己build的opencv" ON)
 
 # 自动检测宿主机 CPU 架构
 string(TOLOWER "${CMAKE_HOST_SYSTEM_PROCESSOR}" HOST_ARCH)
@@ -130,12 +131,31 @@ if(USE_CROSS_COMPILE)
     )
 
 else()
-    # 【原生编译模式】(x86 Ubuntu 或 RK 本机) 使用系统 find_package
-    find_package(OpenCV REQUIRED)
-    message(STATUS "Found System OpenCV: ${OpenCV_VERSION} | ${OpenCV_INCLUDE_DIRS}")
-    
-    target_include_directories(${PROJECT_NAME} PRIVATE ${OpenCV_INCLUDE_DIRS})
-    target_link_libraries(${PROJECT_NAME} PRIVATE ${OpenCV_LIBS} pthread)
+    if(EXISTS "${CMAKE_SOURCE_DIR}/third_lib/opencv/lib/cmake/opencv4" AND USE_CUSTOM_OPENCV) 
+        message(STATUS "Using custom OpenCV")
+
+        set(OpenCV_DIR "${CMAKE_SOURCE_DIR}/third_lib/opencv/lib/cmake/opencv4")
+        find_package(OpenCV REQUIRED) # 默认使用 CONFIG 模式（寻找 OpenCVConfig.cmake
+        include_directories(${OpenCV_INCLUDE_DIRS})
+        target_link_libraries(${PROJECT_NAME} 
+            ${OpenCV_LIBS}
+            pthread
+        )
+        message(STATUS "OpenCV version: ${OpenCV_VERSION}")
+        message(STATUS "OpenCV include path: ${OpenCV_INCLUDE_DIRS}")
+    else()
+        message(STATUS "Using system OpenCV")
+        # # 【原生编译模式】(x86 Ubuntu 或 RK 本机) 使用系统 find_package
+        find_package(OpenCV REQUIRED)
+        target_include_directories(${PROJECT_NAME} PRIVATE ${OpenCV_INCLUDE_DIRS})
+        target_link_libraries(${PROJECT_NAME} PRIVATE 
+            ${OpenCV_LIBS} 
+            pthread
+        )
+
+        message(STATUS "OpenCV version: ${OpenCV_VERSION}")
+        message(STATUS "OpenCV include path: ${OpenCV_INCLUDE_DIRS}")
+    endif()
 endif()
 
 if(USE_CROSS_COMPILE)
@@ -145,6 +165,16 @@ if(USE_CROSS_COMPILE)
         BUILD_RPATH "$ORIGIN/../../third_lib/opencv/lib"
         INSTALL_RPATH "$ORIGIN/../../third_lib/opencv/lib"
     )
+else()
+    if(EXISTS "${CMAKE_SOURCE_DIR}/third_lib/opencv/lib/cmake/opencv4" AND USE_CUSTOM_OPENCV) 
+        set_target_properties(${PROJECT_NAME} PROPERTIES
+            BUILD_RPATH "$ORIGIN/../../third_lib/opencv/lib"
+            INSTALL_RPATH "$ORIGIN/../../third_lib/opencv/lib"
+            )
+    else()
+        # find /usr -name "libopencv_highgui.so*" 2>/dev/null
+        set_target_properties(${PROJECT_NAME} PROPERTIES INSTALL_RPATH "/usr/lib/x86_64-linux-gnu/")
+    endif()
 endif()
 
 # ============================================================================
