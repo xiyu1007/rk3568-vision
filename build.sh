@@ -50,17 +50,24 @@ make install
 cd -
 # 返回到执行脚本之前的目录
 
-# 1. 检测是否有本地显示屏幕 (:0.0)
-# 如果 DISPLAY 为空，或者我们想强制使用 Xming，可以手动指定
-if [ -z "$DISPLAY" ]; then
-    echo "No DISPLAY set. Defaulting to Xming (localhost:10.0)..."
-    export DISPLAY=localhost:10.0
-elif [ "$DISPLAY" = ":0" ]; then
-    echo "No DISPLAY set. Defaulting to Xming (localhost:10.0)..."
-    export DISPLAY=localhost:10.0
-elif [ "$DISPLAY" = ":0.0" ]; then
-    # 可选：如果你想在没有物理屏幕时强制转发，可以注释掉下面这行
-    echo "Using local display :0.0"
+
+# SSH X11 转发: (ssh -X user@host , ssh -Y user@host) SSH 自动分配（X11 forwarding）
+# export DISPLAY=localhost:10.0
+# wsl:  本地 X Server（Xming） WSL 自动映射到 Windows 的 X Server（如 Xming）
+# export DISPLAY=:0 
+
+# 通用：
+# 判断是否在 WSL
+if grep -qi WSL /proc/version 2>/dev/null; then
+    # WSL 环境
+    echo "WSL detected, set DISPLAY=:0"
+    export DISPLAY=:0
+# 本地 Linux（物理机）
 else
-    echo "Using existing DISPLAY: $DISPLAY"
+    if [ -z "$DISPLAY" ]; then
+        echo "Local machine with no DISPLAY, fallback to :0"
+        export DISPLAY=localhost:10.0
+    else
+        echo "Local machine, using DISPLAY: $DISPLAY"
+    fi
 fi
