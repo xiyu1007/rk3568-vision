@@ -18,10 +18,10 @@ cmake ../$OPENCV_SRC \
     -DWITH_V4L=ON \
     -DWITH_FFMPEG=ON \
     -DWITH_GSTREAMER=ON \
-    -DWITH_GTK=ON \
+    -DBUILD_opencv_highgui=ON \
     -DBUILD_SHARED_LIBS=ON \
     -DWITH_GTK=ON \
-    -DWITH_GTK_2_X=ON \
+    -DWITH_GTK_2_X=OFF \
     -DBUILD_PNG=ON \
     -DWITH_PNG=ON \
     -DBUILD_EXAMPLES=OFF \
