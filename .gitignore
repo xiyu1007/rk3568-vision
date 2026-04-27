@@ -9,3 +9,5 @@ tmp/
 /build/
 /third_lib/
 /share/
+/nginx-1.24.0/
+/nginx-rtmp-module/
