@@ -1,7 +1,5 @@
 #!/bin/bash
 
-set -e  # 遇到错误立即退出
-
 # 配置
 BUILD_DIR="build_opencv"
 INSTALL_DIR="third_lib/opencv"

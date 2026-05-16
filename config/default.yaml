@@ -1,0 +1,70 @@
+# ============================================================================
+# RK3568 Vision Pipeline 默认配置文件
+# 所有参数均可通过命令行 --config 覆盖
+# ============================================================================
+
+# --- 视频采集 (V4L2) ---
+capture:
+  device:         "/dev/video0"       # V4L2 设备节点
+  width:          1920                 # 采集宽度
+  height:         1080                 # 采集高度
+  fps:            30                   # 目标帧率
+  pixel_format:   NV12              # 像素格式: NV12 / MJPEG / YUYV
+  buffer_count:   6                    # V4L2 DMA buffer 数量（4~8，建议6）
+  buffer_type:    MPLANE            # MPLANE (多平面) / SINGLE
+
+# --- RKNN 推理 ---
+inference:
+  enabled:        true                 # 是否启用推理
+  model_path:     "model/yolov5s.rknn" # RKNN 模型路径
+  labels_path:    "model/coco_80_labels_list.txt"
+  conf_threshold: 0.25                # 置信度阈值
+  nms_threshold:  0.45                # NMS 阈值
+  model_width:    640                 # 模型输入宽度
+  model_height:   640                 # 模型输入高度
+  quantized:      true                # INT8 量化推理（推荐）
+  npu_core:       0                   # NPU 核心号（RK3568: 0）
+
+# --- 编码 (H.264) ---
+# 分辨率/FPS/像素格式自动跟随capture配置
+encode:
+  enabled:        true
+  codec:          "h264"              # h264 / h265
+  bitrate:        4000000             # 码率 (bps)，1080P@30fps 建议 4~6M
+  gop_size:       60                  # 关键帧间隔（2秒@30fps）
+  preset:         "fast"              # x264 preset: ultrafast/fast/medium
+  profile:        "high"              # x264 profile: baseline/main/high
+
+# --- RTMP 推流 ---
+stream:
+  enabled:        false               # 是否启用推流
+  url:            "rtmp://127.0.0.1/live/stream"
+  reconnect:      true                # 断流自动重连
+  reconnect_delay: 2000              # 重连延迟 (ms)
+  max_reconnect:  10                  # 最大重连次数 (-1=无限)
+
+# --- 本地显示 ---
+display:
+  enabled:        true
+  window_name:    "RK3568 Vision"
+  show_fps:       true
+  show_osd:       true
+
+# --- 性能监控 ---
+monitor:
+  enabled:        true
+  log_interval:   5000                # 性能日志输出间隔 (ms)
+
+# --- 日志 ---
+logging:
+  level:          "info"              # debug / info / warn / error
+  file:           "log/rk3568_vision.log"
+  console:        true                # 是否输出到控制台
+  async:          true                # 异步日志（推荐）
+  max_size:       10485760            # 单个日志文件最大 10MB
+  backup_count:   3                   # 保留备份数量
+
+# --- 系统 ---
+system:
+  output_dir:     "output"            # 输出目录
+  temp_dir:       "tmp"               # 临时文件目录

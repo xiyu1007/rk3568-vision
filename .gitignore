@@ -11,3 +11,5 @@ tmp/
 /share/
 /nginx-1.24.0/
 /nginx-rtmp-module/
+/.sisyphus/
+/log/
