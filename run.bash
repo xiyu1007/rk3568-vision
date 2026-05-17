@@ -1,96 +1,43 @@
 #!/bin/bash
 set -e
+cd "$(dirname "$0")"
+BIN="build/rk3568_vision"
+CFG="config/default.yaml"
 
-SCRIPT_DIR="$(cd "$(dirname "$0")" && pwd)"
-BUILD_DIR="${SCRIPT_DIR}/build"
-BINARY="${BUILD_DIR}/rk3568_vision"
-CONFIG="${SCRIPT_DIR}/config/default.yaml"
-
-# 默认参数
-CAM_DEV="/dev/video0"
-CAM_W="1920"
-CAM_H="1080"
-BUILD_ONLY=0
-RUN_ONLY=0
-CLEAN=0
-ENABLE_INFER=0
-ENABLE_DISPLAY=1
-
-usage() {
-    echo "Usage: $0 [OPTIONS]"
-    echo "  -b          Only build"
-    echo "  -r          Only run (skip build)"
-    echo "  -c          Clean rebuild"
-    echo "  -d DEV      Camera device (default: /dev/video0)"
-    echo "  -W WIDTH    Width (default: 1920)"
-    echo "  -H HEIGHT   Height (default: 1080)"
-    echo "  -i          Enable inference"
-    echo "  -D          Enable display"
-    echo "  -h          This help"
-    exit 0
-}
-
-while getopts "brcd:W:H:iDh" opt; do
+BUILD=1 RUN=1 CLEAN=0 DISP=1
+while getopts "brcd:W:H:f:iDh" opt; do
     case $opt in
-        b) BUILD_ONLY=1 ;;
-        r) RUN_ONLY=1 ;;
+        b) BUILD=1; RUN=0 ;;
+        r) BUILD=0; RUN=1 ;;
         c) CLEAN=1 ;;
         d) CAM_DEV="$OPTARG" ;;
         W) CAM_W="$OPTARG" ;;
         H) CAM_H="$OPTARG" ;;
-        i) ENABLE_INFER=1 ;;
-        D) ENABLE_DISPLAY=1 ;;
-        h) usage ;;
-        *) usage ;;
+        f) CAM_FPS="$OPTARG" ;;
+        i) INF=1 ;;
+        D) DISP=1 ;;
+        h) echo "Usage: $0 [-b|-r|-c] [-d DEV] [-W W] [-H H] [-i] [-D]"; exit 0 ;;
     esac
 done
 
-# === 编译 ===
-if [ $RUN_ONLY -eq 0 ]; then
-    echo "========================================"
-    echo " Building RK3568 Vision Pipeline"
-    echo "========================================"
-
-    [ $CLEAN -eq 1 ] && rm -rf "$BUILD_DIR"
-    mkdir -p "$BUILD_DIR"
-
-    HOST_ARCH=$(uname -m)
-    if [ "$HOST_ARCH" = "aarch64" ]; then
-        echo "[INFO] Native build on aarch64 (RK3568 board)"
-        cd "$BUILD_DIR"
-        cmake "$SCRIPT_DIR" -DCMAKE_BUILD_TYPE=Release
-    else
-        echo "[INFO] Build on $HOST_ARCH (RKNN stubbed)"
-        cd "$BUILD_DIR"
-        cmake "$SCRIPT_DIR" -DCMAKE_BUILD_TYPE=Release
-    fi
-
-    make -j$(nproc)
-    echo "[OK] Build complete: $BINARY"
-    echo ""
+if [ $BUILD -eq 1 ]; then
+    echo "=== Building rk3568_vision v3.0.0 ==="
+    [ $CLEAN -eq 1 ] && rm -rf build
+    mkdir -p build && cd build
+    cmake .. -DCMAKE_BUILD_TYPE=Release && make -j$(nproc)
+    echo "[OK] Build complete"
 fi
 
-# === 运行 ===
-if [ $BUILD_ONLY -eq 0 ]; then
-    echo "========================================"
-    echo " Running RK3568 Vision Pipeline"
-    echo "========================================"
-    echo "  Camera:  $CAM_DEV ${CAM_W}x${CAM_H}"
-    echo "  Config:  $CONFIG"
-    echo "========================================"
-
-    cd "$SCRIPT_DIR"
+if [ $RUN -eq 1 ]; then
+    cd "$(dirname "$0")"
     mkdir -p log
-
-    EXTRA=""
-    [ $ENABLE_INFER -eq 0 ] && EXTRA="$EXTRA -n"
-    [ $ENABLE_DISPLAY -eq 0 ] && EXTRA="$EXTRA -N"
-    [ -z "$DISPLAY" ] && EXTRA="$EXTRA -N"
-
-    exec "$BINARY" \
-        -c "$CONFIG" \
-        -d "$CAM_DEV" \
-        -W "$CAM_W" \
-        -H "$CAM_H" \
-        $EXTRA
+    ARGS="-c $CFG"
+    [ -n "$CAM_DEV" ] && ARGS="$ARGS -d $CAM_DEV"
+    [ -n "$CAM_W" ]   && ARGS="$ARGS -W $CAM_W"
+    [ -n "$CAM_H" ]   && ARGS="$ARGS -H $CAM_H"
+    [ -n "$CAM_FPS" ] && ARGS="$ARGS -f $CAM_FPS"
+    [ "$INF" != "1" ]  && ARGS="$ARGS -n"
+    [ "$DISP" != "1" ] && ARGS="$ARGS -N"
+    echo "=== Running $BIN $ARGS ==="
+    exec "$BIN" $ARGS
 fi

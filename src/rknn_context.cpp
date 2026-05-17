@@ -1,5 +1,8 @@
 #include "rknn_context.hpp"
-#include "logger.hpp"
+
+extern "C" {
+#include "logger.h"
+}
 
 #ifdef X86_DEBUG
 
