@@ -76,6 +76,12 @@ bool RknnContext::init(const std::string& model_path, uint32_t npu_core) {
         output_attrs_.get()[i].index = i;
         rknn_query(ctx_, RKNN_QUERY_OUTPUT_ATTR,
                    &output_attrs_.get()[i], sizeof(rknn_tensor_attr));
+        auto& oa = output_attrs_.get()[i];
+        int sz = 1;
+        for (uint32_t d = 0; d < oa.n_dims; d++) sz *= oa.dims[d];
+        LOG_INFO("Output[%u]: dims=[%d,%d,%d,%d] nd=%d size=%d fmt=%d type=%d scale=%.4f zp=%d",
+                 i, oa.dims[0],oa.dims[1],oa.dims[2],oa.dims[3],
+                 oa.n_dims, sz, oa.fmt, oa.type, oa.scale, (int)oa.zp);
     }
 
     auto& attr = input_attrs_.get()[0];
@@ -84,18 +90,30 @@ bool RknnContext::init(const std::string& model_path, uint32_t npu_core) {
     } else {
         input_height_ = attr.dims[1]; input_width_ = attr.dims[2]; input_channel_ = attr.dims[3];
     }
-    LOG_INFO("Model input: %ux%ux%u", input_width_, input_height_, input_channel_);
+    LOG_INFO("Model input: %ux%ux%u type=%d fmt=%s scale=%.4f zp=%d fl=%d qnt=%d",
+             input_width_, input_height_, input_channel_,
+             (int)attr.type,
+             attr.fmt == RKNN_TENSOR_NCHW ? "NCHW" : "NHWC",
+             attr.scale, (int)attr.zp, (int)attr.fl, (int)attr.qnt_type);
     return true;
 }
 
 bool RknnContext::set_inputs(const rknn_input* inputs, uint32_t n_input) {
-    return rknn_inputs_set(ctx_, n_input, const_cast<rknn_input*>(inputs)) >= 0;
+    int ret = rknn_inputs_set(ctx_, n_input, const_cast<rknn_input*>(inputs));
+    if (ret < 0) LOG_ERROR("rknn_inputs_set failed: %d", ret);
+    return ret >= 0;
 }
 
-bool RknnContext::run() { return rknn_run(ctx_, nullptr) >= 0; }
+bool RknnContext::run() {
+    int ret = rknn_run(ctx_, nullptr);
+    if (ret < 0) LOG_ERROR("rknn_run failed: %d", ret);
+    return ret >= 0;
+}
 
 bool RknnContext::get_outputs(rknn_output* outputs, uint32_t n_output) {
-    return rknn_outputs_get(ctx_, n_output, outputs, nullptr) >= 0;
+    int ret = rknn_outputs_get(ctx_, n_output, outputs, nullptr);
+    if (ret < 0) LOG_ERROR("rknn_outputs_get failed: %d", ret);
+    return ret >= 0;
 }
 
 bool RknnContext::release_outputs(rknn_output* outputs, uint32_t n_output) {

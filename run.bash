@@ -4,7 +4,7 @@ cd "$(dirname "$0")"
 BIN="build/rk3568_vision"
 CFG="config/default.yaml"
 
-BUILD=1 RUN=1 CLEAN=0 DISP=1
+BUILD=1 RUN=1 CLEAN=0 INF=0 DISP=0
 while getopts "brcd:W:H:f:iDh" opt; do
     case $opt in
         b) BUILD=1; RUN=0 ;;
@@ -16,7 +16,7 @@ while getopts "brcd:W:H:f:iDh" opt; do
         f) CAM_FPS="$OPTARG" ;;
         i) INF=1 ;;
         D) DISP=1 ;;
-        h) echo "Usage: $0 [-b|-r|-c] [-d DEV] [-W W] [-H H] [-i] [-D]"; exit 0 ;;
+        h) echo "Usage: $0 [-b|-r|-c] [-d DEV] [-W W] [-H H] [-f FPS] [-i] [-D]"; exit 0 ;;
     esac
 done
 
@@ -36,8 +36,7 @@ if [ $RUN -eq 1 ]; then
     [ -n "$CAM_W" ]   && ARGS="$ARGS -W $CAM_W"
     [ -n "$CAM_H" ]   && ARGS="$ARGS -H $CAM_H"
     [ -n "$CAM_FPS" ] && ARGS="$ARGS -f $CAM_FPS"
-    [ "$INF" != "1" ]  && ARGS="$ARGS -n"
-    [ "$DISP" != "1" ] && ARGS="$ARGS -N"
+    [ "$INF" = "1" ]  && ARGS="$ARGS"   # inference enabled by config default
     echo "=== Running $BIN $ARGS ==="
     exec "$BIN" $ARGS
 fi

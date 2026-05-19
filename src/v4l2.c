@@ -17,8 +17,10 @@
 struct v4l2_cap_s {
     int fd, epfd;
     struct { void* start; size_t length; } bufs[MAX_BUFS];
-    uint32_t nbufs, width, height, stride_y;
+    uint32_t nbufs;
+    uint32_t width, height, stride_y;
     uint32_t pixfmt, buf_type;
+    uint32_t nplanes;
     int mplane, running;
     uint64_t seq;
 };
@@ -72,6 +74,8 @@ v4l2_cap_t* v4l2_open(const char* dev, uint32_t w, uint32_t h,
     cap->width  = fmt.fmt.pix_mp.width;
     cap->height = fmt.fmt.pix_mp.height;
     cap->stride_y = fmt.fmt.pix_mp.plane_fmt[0].bytesperline;
+    cap->nplanes = fmt.fmt.pix_mp.num_planes;
+    if (cap->nplanes == 0) cap->nplanes = 1;
 
     struct v4l2_streamparm parm;
     memset(&parm, 0, sizeof(parm));
@@ -103,15 +107,36 @@ v4l2_cap_t* v4l2_open(const char* dev, uint32_t w, uint32_t h,
         if (cap->mplane) { buf.m.planes = planes; buf.length = VIDEO_MAX_PLANES; }
         if (xioctl(cap->fd, VIDIOC_QUERYBUF, &buf) < 0)
             { LOG_ERROR("QUERYBUF[%u] fail", i); goto fail; }
-        off_t  off = cap->mplane ? planes[0].m.mem_offset : buf.m.offset;
-        size_t len = cap->mplane ? planes[0].length : buf.length;
-        cap->bufs[i].start = mmap(NULL, len, PROT_READ|PROT_WRITE, MAP_SHARED, cap->fd, off);
-        cap->bufs[i].length = len;
-        if (cap->bufs[i].start == MAP_FAILED)
-            { LOG_ERROR("mmap[%u] fail", i); goto fail; }
+
+        if (cap->mplane) {
+            cap->bufs[i].start  = mmap(NULL, planes[0].length, PROT_READ|PROT_WRITE,
+                                        MAP_SHARED, cap->fd, planes[0].m.mem_offset);
+            cap->bufs[i].length = planes[0].length;
+        } else {
+            cap->bufs[i].start  = mmap(NULL, buf.length, PROT_READ|PROT_WRITE,
+                                        MAP_SHARED, cap->fd, buf.m.offset);
+            cap->bufs[i].length = buf.length;
+        }
+        if (cap->bufs[i].start == MAP_FAILED) {
+            LOG_ERROR("mmap[%u] fail: %s", i, strerror(errno));
+            goto fail;
+        }
     }
 
     LOG_INFO("v4l2 opened: %s %ux%u bufs=%u", dev, cap->width, cap->height, cap->nbufs);
+
+    /* set camera controls for best image quality */
+    {
+        struct v4l2_control ctrl;
+        memset(&ctrl, 0, sizeof(ctrl));
+        ctrl.id = V4L2_CID_EXPOSURE_ABSOLUTE;
+        ctrl.value = 2000;  /* ~90% of max 2242, bright image */
+        ioctl(cap->fd, VIDIOC_S_CTRL, &ctrl);
+        ctrl.id = V4L2_CID_GAIN;
+        ctrl.value = 0;     /* min gain, low noise */
+        ioctl(cap->fd, VIDIOC_S_CTRL, &ctrl);
+    }
+
     return cap;
 
 fail:
@@ -129,7 +154,7 @@ int v4l2_start(v4l2_cap_t* cap) {
         buf.type = cap->buf_type;
         buf.memory = V4L2_MEMORY_MMAP;
         buf.index = i;
-        if (cap->mplane) { buf.m.planes = planes; buf.length = 1; }
+        if (cap->mplane) { buf.m.planes = planes; buf.length = cap->nplanes; }
         if (xioctl(cap->fd, VIDIOC_QBUF, &buf) < 0)
             { LOG_ERROR("QBUF[%u] fail", i); return -1; }
     }

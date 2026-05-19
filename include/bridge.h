@@ -22,6 +22,8 @@ void  bridge_display_show(void* d, const uint8_t* bgr, int w, int h,
                            int show_fps, double fps,
                            const detect_result_t* detections);
 
+void  bridge_nv12_to_bgr(const uint8_t* nv12, int stride, int w, int h, uint8_t* bgr_out);
+
 #ifdef __cplusplus
 }
 #endif

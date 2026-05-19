@@ -6,9 +6,9 @@
 # --- 视频采集 (V4L2) ---
 capture:
   device:         "/dev/video0"       # V4L2 设备节点
-  width:          1920                 # 采集宽度
-  height:         1080                 # 采集高度
-  fps:            30                   # 目标帧率
+  width:          640                  # 采集宽度
+  height:         480                  # 采集高度
+  fps:            15                   # 目标帧率
   pixel_format:   NV12              # 像素格式: NV12 / MJPEG / YUYV
   buffer_count:   6                    # V4L2 DMA buffer 数量（4~8，建议6）
   buffer_type:    MPLANE            # MPLANE (多平面) / SINGLE

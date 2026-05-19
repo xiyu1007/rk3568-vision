@@ -144,17 +144,18 @@ static void* capture_thread(void* arg) {
 static void nv12_to_bgr(frame_t* f) {
     if (f->bgr_valid) return;
     int w = f->width, h = f->height;
+    int stride = f->stride ? (int)f->stride : w;
     int bgr_size = w * h * 3;
     if (!f->bgr_data) f->bgr_data = malloc(bgr_size);
     if (!f->bgr_data) return;
 
     uint8_t* y  = f->data;
-    uint8_t* uv = f->data + w * h;
+    uint8_t* uv = f->data + stride * h;  /* UV starts after Y plane padded to stride */
 
     for (int i = 0; i < h; i++) {
         for (int j = 0; j < w; j++) {
-            int yi = i * w + j;
-            int uvi = (i / 2) * w + (j & ~1);
+            int yi = i * stride + j;
+            int uvi = (i / 2) * stride + (j & ~1);
             int Y = y[yi];
             int U = uv[uvi] - 128;
             int V = uv[uvi + 1] - 128;
@@ -183,14 +184,21 @@ static void* inference_thread(void* arg) {
 
         int64_t t0 = (int64_t)timestamp_now();
 
-        nv12_to_bgr(f);
+        if (!f->bgr_data) f->bgr_data = malloc((size_t)f->width * f->height * 3);
+        if (!f->bgr_data) { frame_free(f); continue; }
+
+        bridge_nv12_to_bgr(f->data, (int)f->stride, (int)f->width, (int)f->height, f->bgr_data);
+        f->bgr_valid = 1;
 
         bridge_detector_detect(p->detector, f->bgr_data,
                                 f->width, f->height, &f->detect);
         f->inf_ts = timestamp_now();
         perf_record_infer((int64_t)(f->inf_ts - t0));
 
-        fps_tick();
+        if ((f->seq % 60) == 0)
+            LOG_INFO("frame %llu: %u det, %.0fms",
+                     (unsigned long long)f->seq, f->detect.count,
+                     (f->inf_ts - t0) / 1000.0);
 
         ringbuf_push(&p->inf_q, f);
         if (p->cfg.disp.enabled) {
@@ -239,8 +247,13 @@ static void* display_thread(void* arg) {
         frame_t* f = ringbuf_pop(&p->disp_q);
         if (!f) { usleep(1000); if (sig_shutdown()) break; continue; }
 
-        if (!f->bgr_valid)
-            nv12_to_bgr(f);
+        if (!f->bgr_valid) {
+            if (!f->bgr_data) f->bgr_data = malloc((size_t)f->width * f->height * 3);
+            if (f->bgr_data) {
+                bridge_nv12_to_bgr(f->data, (int)f->stride, (int)f->width, (int)f->height, f->bgr_data);
+                f->bgr_valid = 1;
+            }
+        }
 
         if (f->bgr_valid) {
             bridge_display_show(p->display, f->bgr_data,

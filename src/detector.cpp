@@ -118,7 +118,7 @@ DetectResult Detector::detect(const cv::Mat& bgr) {
                 for (int gx = 0; gx < gw; gx++) {
                     int off = (PROP_BOX_SIZE * a) * glen + gy * gw + gx;
                     int8_t obj_conf_i8 = data[off + 4 * glen];
-                    float obj_conf = deqnt_affine_to_f32(obj_conf_i8, qzp, qscale);
+                    float obj_conf = sigmoid_f(deqnt_affine_to_f32(obj_conf_i8, qzp, qscale));
                     if (obj_conf < conf_threshold_) continue;
 
                     int8_t max_cls_i8 = data[off + 5 * glen];
@@ -127,7 +127,7 @@ DetectResult Detector::detect(const cv::Mat& bgr) {
                         int8_t p = data[off + (5 + c) * glen];
                         if (p > max_cls_i8) { max_cls_i8 = p; max_cls = c; }
                     }
-                    float cls_prob = deqnt_affine_to_f32(max_cls_i8, qzp, qscale);
+                    float cls_prob = sigmoid_f(deqnt_affine_to_f32(max_cls_i8, qzp, qscale));
                     float score = obj_conf * cls_prob;
                     if (score < conf_threshold_) continue;
 
@@ -147,6 +147,8 @@ DetectResult Detector::detect(const cv::Mat& bgr) {
 
     rknn_->release_outputs(outputs.data(), rknn_->output_count());
 
+
+    // NMS
     std::vector<int> keep(dets.size(), 1);
     for (size_t i = 0; i < dets.size(); i++) {
         if (!keep[i]) continue;

@@ -33,6 +33,16 @@ void bridge_detector_detect(void* d, const uint8_t* bgr, int w, int h,
     cv::Mat img(h, w, CV_8UC3, const_cast<uint8_t*>(bgr));
     auto r = det->detect(img);
     result->count = r.count;
+    static int log_cnt = 0;
+    if (r.count > 0 && ++log_cnt % 30 == 0) {
+        char names[256] = {0};
+        int off = 0;
+        for (uint32_t i = 0; i < r.count && i < 3; i++) {
+            off += snprintf(names + off, sizeof(names) - off, "%s(%.0f%%) ",
+                           r.boxes[i].label, r.boxes[i].conf * 100.0f);
+        }
+        LOG_INFO("detected: %s", names);
+    }
     for (uint32_t i = 0; i < r.count && i < DETECT_MAX_BOXES; i++) {
         result->boxes[i].x        = r.boxes[i].x;
         result->boxes[i].y        = r.boxes[i].y;
@@ -96,4 +106,10 @@ void bridge_display_show(void* d, const uint8_t* bgr, int w, int h,
 
     cv::imshow(static_cast<cv::String*>(d)->c_str(), disp);
     cv::waitKey(1);
+}
+
+void bridge_nv12_to_bgr(const uint8_t* nv12, int stride, int w, int h, uint8_t* bgr_out) {
+    cv::Mat nv12_mat(h + h/2, w, CV_8UC1, const_cast<uint8_t*>(nv12), stride);
+    cv::Mat bgr_mat(h, w, CV_8UC3, bgr_out);
+    cv::cvtColor(nv12_mat, bgr_mat, cv::COLOR_YUV2BGR_NV12);
 }
