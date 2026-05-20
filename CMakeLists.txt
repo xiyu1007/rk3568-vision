@@ -45,6 +45,7 @@ option(ENABLE_ASAN "Enable AddressSanitizer" OFF)
 # 但在 RK3568 上直接编译时，CMAKE_HOST_SYSTEM_PROCESSOR 就是 aarch64
 string(TOLOWER "${CMAKE_HOST_SYSTEM_PROCESSOR}" HOST_ARCH)
 
+
 if(HOST_ARCH MATCHES "aarch64|arm64")
     set(IS_RK3568 ON)                            # 目标平台：RK3568
     add_definitions(-DRK3568_NATIVE)             # 定义 RK3568_NATIVE 宏
@@ -85,6 +86,25 @@ if(ENABLE_ASAN)
     add_compile_options(-fsanitize=address -fno-omit-frame-pointer)
     add_link_options(-fsanitize=address)
 endif()
+
+set(SOURCES
+    src/main.c
+    src/config.c
+    src/logger.c
+    src/fps.c
+    src/sig.c
+    src/v4l2.c
+    src/perf.c
+    src/monitor.c
+    src/encoder.c
+    src/rtmp.c
+    src/rknn.c
+    src/rknn_context.cpp
+    src/pipeline.c
+    src/bridge.cpp
+    src/detector.cpp
+    src/display.cpp
+)
 
 # ---------------------------------------------------------------------------
 # 源文件列表（混合 C 和 C++）
@@ -170,6 +190,7 @@ if(IS_RK3568)
         target_compile_definitions(${PROJECT_NAME} PRIVATE HAVE_RGA)
         message(STATUS "RGA: ${RGA_LIBRARY}")
     else()
+        message(STATUS "RGA: not found, fallback to CPU resize")
         message(STATUS "RGA: not found, fallback to CPU resize")
     endif()
 endif()
