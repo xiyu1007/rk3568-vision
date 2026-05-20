@@ -13,3 +13,4 @@ tmp/
 /nginx-rtmp-module/
 /.sisyphus/
 /log/
+/.claude/
