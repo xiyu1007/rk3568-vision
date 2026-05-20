@@ -1,68 +1,135 @@
-# RK3568 边缘 AI 视觉流水线 — 完整工程实现文档
+## 1.4. 基于 RK 3568 的边缘端到端实时目标检测
 
-> **项目名称**：rk3568-vision v3.0.0  
-> **硬件平台**：Rockchip RK3568 (ARM Cortex-A55 ×4 + 1 TOPS NPU)  
-> **摄像头**：Sony IMX415 (4K MIPI CSI)  
-> **软件栈**：V4L2 + RKNN + FFmpeg + OpenCV  
-> **端到端延迟**：< 500ms（实测通常 < 100ms）
+```c
+项目背景参考：
 
----
+基于 RK3568，通过 V4L2 采集 IMX415 摄像头视频，利用 RKNN 部署 YOLOv5 模型进行实时目标检测，再经 FFmpeg/GStreamer 完成 H.264 编码与 RTMP 推流，实现边缘侧实时目标检测，端到端延迟<500ms。
 
-## 目录
+• 基于 V4L2 完成 IMX415 摄像头驱动适配与 NV12 视频流采集，支持 mmap/DMA Buffer 零拷贝方式提升采集性能。采集帧率稳定 30fps@1080P 。
+• 基于 RKNN Toolkit 完成 YOLOv5 模型转换与 INT8 量化部署，调用 RK3568 NPU 进行硬件加速推理，单帧推理耗时约 25ms。
+• 设计生产者-消费者模型，采集/推理/编码/推流四线程解耦，提升系统实时性与吞吐性能。
+• 基于 FFmpeg/GStreamer 实现 H.264 编码与 RTMP 推流，支持本地/远程实时视频监控。
+• 基于 Linux epoll + 环形队列实现线程间异步通信，避免阻塞导致丢帧。
+• 支持 OpenCV 本地显示、目标框绘制与 FPS 实时统计。
+```
 
-1. [项目概述](#1-项目概述)
-2. [整体架构](#2-整体架构)
-3. [数据流向](#3-数据流向)
-4. [线程模型](#4-线程模型)
-5. [模块详解](#5-模块详解)
-   - [5.1 类型定义 (types.h)](#51-类型定义-typesh)
-   - [5.2 无锁环形队列 (ringbuf.h)](#52-无锁环形队列-ringbufh)
-   - [5.3 配置管理 (config)](#53-配置管理-config)
-   - [5.4 日志系统 (logger)](#54-日志系统-logger)
-   - [5.5 信号处理 (sig)](#55-信号处理-sig)
-   - [5.6 视频采集 (v4l2)](#56-视频采集-v4l2)
-   - [5.7 RKNN 推理 (rknn + rknn_context)](#57-rknn-推理-rknn--rknn_context)
-   - [5.8 YOLOv5 检测器 (detector)](#58-yolov5-检测器-detector)
-   - [5.9 H.264 编码 (encoder)](#59-h264-编码-encoder)
-   - [5.10 RTMP 推流 (rtmp)](#510-rtmp-推流-rtmp)
-   - [5.11 C/C++ 桥接 (bridge)](#511-cc-桥接-bridge)
-   - [5.12 流水线编排 (pipeline)](#512-流水线编排-pipeline)
-   - [5.13 帧率统计 (fps)](#513-帧率统计-fps)
-   - [5.14 性能统计 (perf)](#514-性能统计-perf)
-   - [5.15 系统监控 (monitor)](#515-系统监控-monitor)
-   - [5.16 本地显示 (display)](#516-本地显示-display)
-6. [性能优化分析](#6-性能优化分析)
-7. [零拷贝实现详解](#7-零拷贝实现详解)
-8. [NPU 推理流程详解](#8-npu-推理流程详解)
-9. [编码推流流程详解](#9-编码推流流程详解)
-10. [端到端延迟分析](#10-端到端延迟分析)
-11. [初始化与生命周期](#11-初始化与生命周期)
-12. [异常处理与资源释放](#12-异常处理与资源释放)
-13. [关键结构体速查](#13-关键结构体速查)
-14. [CMake 构建组织](#14-cmake-构建组织)
-15. [run.bash 脚本说明](#15-runbash-脚本说明)
-16. [附录：常用命令](#16-附录常用命令)
+```c
+你现在的任务不是开发新功能，而是对当前 RK3568 视觉项目进行“完整代码理解 + 超详细注释补全 + 工程实现文档整理”。
 
----
+执行要求：
 
-## 1. 项目概述
+1. 先完整阅读整个工程，理解：
+- 整体架构
+- 工作流程
+- 模块调用关系
+- 数据流向
+- 线程模型
+- 性能优化措施
+- 推理/编码/推流流程
+- 各模块之间的协作关系
 
-### 1.1 项目目标
+以下文件/目录直接忽略：
+.git
+.sisyphus
+.vscode
+.gitignore
+opencv_make.sh
+opencv_make_rk.sh
 
-基于 RK3568 边缘计算平台，实现**实时视频采集 + AI 目标检测 + H.264 编码 + RTMP 推流**的端到端视觉流水线，端到端延迟控制在 **500ms** 以内。
+2. 项目代码默认禁止修改。
+只有在“100%确定存在 bug / 明显错误 / 严重逻辑问题”时，才允许最小化修改，并说明原因。
 
-### 1.2 核心指标
+3. 仅对以下内容添加注释：
+config/
+include/
+src/
+CMakeLists.txt
+run.bash
 
-| 指标 | 目标值 | 实测值 |
-|------|--------|--------|
-| 采集帧率 | 30fps @ 1080P | 30fps 稳定 |
-| 单帧 NPU 推理耗时 | < 30ms | ~25ms (YOLOv5s INT8) |
-| 端到端延迟 | < 500ms | < 100ms（典型 40~60ms） |
-| CPU 占用 | < 50% | ~30% (四线程) |
-| 内存占用 | < 256MB | ~120MB |
-| NPU 功耗 | — | ~1-2W |
+4. 注释要求：
+- 面向小白
+- 不是函数头说明，而是“关键代码逐行解释”
+- 解释变量作用、数据流、线程关系、性能优化原因
+- 不要废话式注释
+- 不要遗漏关键逻辑
+- 特别说明：
+  - V4L2 采集流程
+  - mmap/DMA 零拷贝
+  - RKNN 推理流程
+  - YOLOv5 后处理
+  - FFmpeg/GStreamer 编码推流
+  - epoll + 环形队列
+  - 生产者消费者模型
+  - 多线程同步
+  - FPS统计
+  - OpenCV绘制流程
+  - 内存管理
+  - 性能优化点
 
-### 1.3 关键技术栈
+5. 在完全理解工程后，编写 node.md（中文）：
+要求：
+- 极其详细
+- 结构清晰
+- 不只是代码说明
+- 要解释：
+  - 项目整体设计
+  - 每个模块职责
+  - 为什么这样设计
+  - 数据如何流动
+  - 各线程如何协作
+  - 性能优化原理
+  - 零拷贝实现
+  - NPU 推理流程
+  - 编码推流流程
+  - 环形队列机制
+  - epoll异步通信
+  - 关键优化代码
+  - 关键结构体
+  - 关键类
+  - 初始化流程
+  - 主循环流程
+  - 异常处理
+  - 资源释放
+  - 项目启动流程
+  - CMake组织方式
+  - run.bash作用
+  - 整个系统如何实现端到端低延迟(<500ms)
+
+项目背景参考：
+
+基于 RK3568，通过 V4L2 采集 IMX415 摄像头视频，利用 RKNN 部署 YOLOv5 模型进行实时目标检测，再经 FFmpeg/GStreamer 完成 H.264 编码与 RTMP 推流，实现边缘侧实时目标检测，端到端延迟<500ms。
+
+• 基于 V4L2 完成 IMX415 摄像头驱动适配与 NV12 视频流采集，支持 mmap/DMA Buffer 零拷贝方式提升采集性能。采集帧率稳定 30fps@1080P 。
+• 基于 RKNN Toolkit 完成 YOLOv5 模型转换与 INT8 量化部署，调用 RK3568 NPU 进行硬件加速推理，单帧推理耗时约 25ms。
+• 设计生产者-消费者模型，采集/推理/编码/推流四线程解耦，提升系统实时性与吞吐性能。
+• 基于 FFmpeg/GStreamer 实现 H.264 编码与 RTMP 推流，支持本地/远程实时视频监控。
+• 基于 Linux epoll + 环形队列实现线程间异步通信，避免阻塞导致丢帧。
+• 支持 OpenCV 本地显示、目标框绘制与 FPS 实时统计。
+
+目标：
+最终得到：
+1. 可维护、超详细注释的工程代码
+2. 一份完整、专业、超详细的 node.md 项目实现文档
+3. 不破坏原有工程逻辑与性能
+```
+
+### 1.4.1. 项目概述
+#### 1.4.1.1. 项目目标
+
+基于 RK 3568 边缘计算平台，实现**实时视频采集 + AI 目标检测 + H.264 编码 + RTMP 推流**的端到端视觉流水线，端到端延迟控制在 **100 ms** 以内。
+
+#### 1.4.1.2. 核心指标
+
+| 指标          | 目标值             | 实测值                      |
+| ----------- | --------------- | ------------------------ |
+| 采集帧率        | 30 fps @ 1080 P | 30 fps 稳定                |
+| 单帧 NPU 推理耗时 | < 30 ms         | ~25 ms (YOLOv 5 s INT 8) |
+| 端到端延迟       | < 500 ms        | < 100 ms（典型 40~60 ms）    |
+| CPU 占用      | < 50%           | ~30% (四线程)               |
+| 内存占用        | < 256 MB        | ~120 MB                  |
+| NPU 功耗      | —               | ~1-2 W                   |
+
+#### 1.4.1.3. 关键技术栈
 
 ```
 ┌─────────────────────────────────────────────────┐
@@ -83,9 +150,9 @@
 
 ---
 
-## 2. 整体架构
+### 1.4.2. 整体架构
 
-### 2.1 架构图
+#### 1.4.2.1. 架构图
 
 ```
                     ┌──────────────────────────────────────┐
@@ -108,12 +175,12 @@
                     │  │    │              │        │   │     │
                     │  │    │          编码线程   显示线程│     │
                     │  │    │              │             │     │
-                    │  │    │          RTMP推流     OpenCV│     │
+                    │  │    │          RTMP推流     OpenCV│   │
                     │  └─────────────────────────────┘     │
                     └──────────────────────────────────────┘
 ```
 
-### 2.2 模块组成
+#### 1.4.2.2. 模块组成
 
 | 模块 | 文件 | 语言 | 职责 |
 |------|------|------|------|
@@ -122,14 +189,14 @@
 | **配置管理** | `config.c/h` | C | YAML 文件解析，命令行覆盖 |
 | **日志系统** | `logger.c/h` | C | 异步线程安全日志 |
 | **信号处理** | `sig.c/h` | C | SIGINT/SIGTERM 优雅退出 |
-| **视频采集** | `v4l2.c/h` | C | V4L2 mmap + epoll 零拷贝采集 |
+| **视频采集** | `v4l2.c/h` | C | V 4 L 2 mmap + epoll 零拷贝采集 |
 | **RKNN 推理** | `rknn.c/h`, `rknn_context.cpp/hpp` | C/C++ | NPU 模型加载与推理 |
-| **YOLOv5 检测** | `detector.cpp/hpp` | C++ | 前处理 + 后处理（解码框 + NMS） |
-| **H.264 编码** | `encoder.c/h` | C | FFmpeg libx264 软件编码 |
+| **YOLOv 5 检测** | `detector.cpp/hpp` | C++ | 前处理 + 后处理（解码框 + NMS） |
+| **H.264 编码** | `encoder.c/h` | C | FFmpeg libx 264 软件编码 |
 | **RTMP 推流** | `rtmp.c/h` | C | FFmpeg FLV 封装 + RTMP 推送 |
 | **C/C++ 桥接** | `bridge.cpp/h` | C++ | C 代码调用 C++ 对象的桥接层 |
 | **流水线编排** | `pipeline.c/h` | C | 四线程创建、调度、生命周期 |
-| **帧率统计** | `fps.c/h` | C | 500ms 滑动窗口 FPS 计算 |
+| **帧率统计** | `fps.c/h` | C | 500 ms 滑动窗口 FPS 计算 |
 | **性能统计** | `perf.c/h` | C | 原子操作延迟记录 |
 | **系统监控** | `monitor.c/h` | C | CPU/内存/温度 监控线程 |
 | **本地显示** | `display.cpp/hpp` | C++ | OpenCV 窗口管理 |
@@ -137,9 +204,9 @@
 
 ---
 
-## 3. 数据流向
+### 1.4.3. 数据流向
 
-### 3.1 端到端数据流
+#### 1.4.3.1. 端到端数据流
 
 ```
 IMX415 摄像头
@@ -176,7 +243,7 @@ RTMP 推流
 FLV 封装 → TCP → 服务器
 ```
 
-### 3.2 颜色空间转换路径
+#### 1.4.3.2. 颜色空间转换路径
 
 ```
   采集:  NV12 (ISP 硬件输出)
@@ -193,9 +260,9 @@ FLV 封装 → TCP → 服务器
 
 ---
 
-## 4. 线程模型
+### 1.4.4. 线程模型
 
-### 4.1 四线程生产者-消费者
+#### 1.4.4.1. 四线程生产者-消费者
 
 ```
 ┌─────────────┐    cap_q    ┌─────────────┐
@@ -218,7 +285,7 @@ FLV 封装 → TCP → 服务器
                     └─────────────┘ └─────────────┘
 ```
 
-### 4.2 线程同步机制
+#### 1.4.4.2. 线程同步机制
 
 | 机制 | 用途 | 实现 |
 |------|------|------|
@@ -228,20 +295,20 @@ FLV 封装 → TCP → 服务器
 | **atomic refcount** | 帧共享 | `frame_t.refcount` — `__atomic_sub_fetch` |
 | **sig_atomic_t** | 信号通知 | `g_shutdown` — `sig_handler` 写入 |
 
-### 4.3 各线程休眠策略
+#### 1.4.4.3. 各线程休眠策略
 
 | 线程 | 队列空时休眠 | 原因 |
 |------|-------------|------|
-| 采集线程 | 不主动休眠（epoll 100ms 超时） | 依赖硬件中断，CPU 几乎不消耗 |
-| 推理线程 | usleep(1000) = 1ms | 推理是瓶颈，快速响应新帧 |
-| 编码线程 | usleep(5000) = 5ms | 编码很快，减少空转 CPU |
-| 显示线程 | usleep(1000) = 1ms | 显示需要快速刷新 |
+| 采集线程 | 不主动休眠（epoll 100 ms 超时） | 依赖硬件中断，CPU 几乎不消耗 |
+| 推理线程 | usleep(1000) = 1 ms | 推理是瓶颈，快速响应新帧 |
+| 编码线程 | usleep(5000) = 5 ms | 编码很快，减少空转 CPU |
+| 显示线程 | usleep(1000) = 1 ms | 显示需要快速刷新 |
 
 ---
 
-## 5. 模块详解
+### 1.4.5. 模块详解
 
-### 5.1 类型定义 (types.h)
+#### 1.4.5.1. 类型定义 (types.h)
 
 **核心结构体**：
 
@@ -264,14 +331,14 @@ typedef struct {
 
 **设计要点**：
 - `refcount`：原子引用计数，支持编码线程和显示线程同时引用同一帧
-- `bgr_data` + `bgr_valid`：惰性转换，只在第一次需要 BGR 时执行 NV12→BGR
+- `bgr_data` + `bgr_valid`：惰性转换，只在第一次需要 BGR 时执行 NV 12→BGR
 - `seq`：单调递增序号，用于日志追踪和 PTS 生成
 
-### 5.2 无锁环形队列 (ringbuf.h)
+#### 1.4.5.2. 无锁环形队列 (ringbuf.h)
 
 **为什么不用 mutex？**
 
-在高吞吐场景下（30fps × 多帧缓冲），mutex 每次 lock/unlock 需要进出内核态（~1μs），而无锁队列通过原子指令在用户态完成（< 50ns）。
+在高吞吐场景下（30 fps × 多帧缓冲），mutex 每次 lock/unlock 需要进出内核态（~1μs），而无锁队列通过原子指令在用户态完成（< 50 ns）。
 
 **Cache Line 对齐（关键性能优化）**：
 
@@ -303,7 +370,7 @@ typedef struct {
 | pop 读 tail | ACQUIRE | 需要看到生产者对 tail 的写入 |
 | pop 写 head | RELEASE | 保证数据读取在 head 更新前完成 |
 
-### 5.3 配置管理 (config)
+#### 1.4.5.3. 配置管理 (config)
 
 **精简 YAML 解析器**（约 200 行 C 代码）：
 
@@ -318,7 +385,7 @@ typedef struct {
 
 **降级策略**：YAML 文件不存在时使用默认值，不报错（方便开发调试）
 
-### 5.4 日志系统 (logger)
+#### 1.4.5.4. 日志系统 (logger)
 
 **异步生产者-消费者架构**：
 
@@ -332,15 +399,15 @@ typedef struct {
 - `async=true`：日志不阻塞业务线程（推荐）
 - `async=false`：同步写入，崩溃时不丢日志
 
-### 5.5 信号处理 (sig)
+#### 1.4.5.5. 信号处理 (sig)
 
 - `SIGINT`（Ctrl+C）→ 设置 `g_shutdown=1`
 - `SIGTERM`（kill / systemd stop）→ 同上
 - `SIGPIPE` → `SIG_IGN`（忽略，防止 RTMP 断连时进程崩溃）
 
-### 5.6 视频采集 (v4l2)
+#### 1.4.5.6. 视频采集 (v 4 l 2)
 
-**完整 V4L2 初始化流程**：
+**完整 V 4 L 2 初始化流程**：
 
 ```
 1. open("/dev/video0", O_RDWR | O_NONBLOCK)
@@ -362,9 +429,9 @@ epoll_wait(100ms timeout)  →  VIDIOC_DQBUF  →  memcpy NV12 → VIDIOC_QBUF
 
 **为什么需要 memcpy（从 mmap 区域拷贝）？**
 
-mmap 缓冲区是循环使用的（6 个 DMA buffer），归还后驱动立即覆盖。下游线程（推理 ~25ms + 编码 ~5ms）处理时间不确定，必须将数据"固化"到独立内存中。**这是唯一不可避免的拷贝**，后续线程间传递通过 refcount 共享 frame_t，不再拷贝数据。
+mmap 缓冲区是循环使用的（6 个 DMA buffer），归还后驱动立即覆盖。下游线程（推理 ~25 ms + 编码 ~5 ms）处理时间不确定，必须将数据"固化"到独立内存中。**这是唯一不可避免的拷贝**，后续线程间传递通过 refcount 共享 frame_t，不再拷贝数据。
 
-### 5.7 RKNN 推理 (rknn + rknn_context)
+#### 1.4.5.7. RKNN 推理 (rknn + rknn_context)
 
 **两层封装设计**：
 
@@ -399,7 +466,7 @@ rknn_inputs_set()  →  rknn_run()  →  rknn_outputs_get()
   (640×640×3 RGB)     (~25ms @ 1TOPS)   (3个输出头)
 ```
 
-### 5.8 YOLOv5 检测器 (detector)
+#### 1.4.5.8. YOLOv 5 检测器 (detector)
 
 **完整检测流程**：
 
@@ -428,7 +495,7 @@ rknn_inputs_set()  →  rknn_run()  →  rknn_outputs_get()
   检测框列表 (x, y, w, h, class_id, conf, label)
 ```
 
-**INT8 反量化公式**：
+**INT 8 反量化公式**：
 
 ```
 float_val = (int8_val - zero_point) × scale
@@ -436,7 +503,7 @@ float_val = (int8_val - zero_point) × scale
 例如：int8_val=50, zp=0, scale=0.004 → float_val=0.2
 ```
 
-**边界框解码（YOLOv5 新公式）**：
+**边界框解码（YOLOv 5 新公式）**：
 
 ```
 bx = (σ(tx) × 2 - 0.5 + grid_x) × stride
@@ -447,7 +514,7 @@ bh = (σ(th) × 2)² × anchor_h
 
 其中 σ = sigmoid，将参数映射到合理范围。`×2-0.5` 允许检测框中心在网格单元外（范围 [-0.5, 1.5]），比旧版 YOLO 的范围更灵活。
 
-### 5.9 H.264 编码 (encoder)
+#### 1.4.5.9. H.264 编码 (encoder)
 
 **编码流程**：
 
@@ -467,21 +534,21 @@ RTMP 推流器
 
 | 参数 | 值 | 说明 |
 |------|-----|------|
-| codec | libx264 | 软件 H.264 编码器 |
-| bitrate | 4,000,000 bps | 4Mbps（1080P 推荐 4-6M） |
-| gop_size | 60 | 每 2 秒一个 I 帧（@30fps） |
+| codec | libx 264 | 软件 H.264 编码器 |
+| bitrate | 4,000,000 bps | 4 Mbps（1080 P 推荐 4-6 M） |
+| gop_size | 60 | 每 2 秒一个 I 帧（@30 fps） |
 | preset | fast | 平衡编码速度与效率 |
 | profile | high | 支持 B 帧和 CABAC |
 
-**NV12 → YUV420P 转换**：
+**NV 12 → YUV 420 P 转换**：
 
 两者都是 4:2:0 色度子采样，但平面排列不同：
-- NV12：Y 平面 + UV 交错平面（NV12）
-- YUV420P：Y 平面 + U 平面 + V 平面（三个独立）
+- NV 12：Y 平面 + UV 交错平面（NV 12）
+- YUV 420 P：Y 平面 + U 平面 + V 平面（三个独立）
 
-sws_scale 使用 CPU NEON SIMD 指令完成转换，耗时约 1-2ms。
+sws_scale 使用 CPU NEON SIMD 指令完成转换，耗时约 1-2 ms。
 
-### 5.10 RTMP 推流 (rtmp)
+#### 1.4.5.10. RTMP 推流 (rtmp)
 
 **RTMP 推流流程**：
 
@@ -506,7 +573,7 @@ sws_scale 使用 CPU NEON SIMD 指令完成转换，耗时约 1-2ms。
 └──────────┴──────────┴──────────┴──────────┴──────────┘
 ```
 
-### 5.11 C/C++ 桥接 (bridge)
+#### 1.4.5.11. C/C++ 桥接 (bridge)
 
 **Bridge Pattern 设计**：
 
@@ -531,7 +598,7 @@ detector.cpp / display.cpp (C++ 类)
 - detector.cpp 使用 C++：RAII（unique_ptr）、STL（vector）、模板
 - bridge 提供 `extern "C"` 接口，打破语言边界
 
-### 5.12 流水线编排 (pipeline)
+#### 1.4.5.12. 流水线编排 (pipeline)
 
 **创建流程 (pipeline_create)**：
 
@@ -566,9 +633,9 @@ detector.cpp / display.cpp (C++ 类)
 9. free(p)            释放流水线结构
 ```
 
-### 5.13 帧率统计 (fps)
+#### 1.4.5.13. 帧率统计 (fps)
 
-**500ms 滑动窗口算法**：
+**500 ms 滑动窗口算法**：
 
 ```
 每帧调用 fps_tick() → count++
@@ -576,12 +643,12 @@ detector.cpp / display.cpp (C++ 类)
 重置：count=0, elapsed 重新计时
 ```
 
-**为什么 500ms？**
-- 100ms：FPS 波动大，数字跳动（不美观）
-- 2000ms：响应太慢，不能反映实时变化
-- 500ms：平衡点，足够平滑又能快速反映变化
+**为什么 500 ms？**
+- 100 ms：FPS 波动大，数字跳动（不美观）
+- 2000 ms：响应太慢，不能反映实时变化
+- 500 ms：平衡点，足够平滑又能快速反映变化
 
-### 5.14 性能统计 (perf)
+#### 1.4.5.14. 性能统计 (perf)
 
 **原子操作保证多线程安全**：
 
@@ -594,17 +661,17 @@ perf_record_encode(5000);   // 编码线程：5ms
 __atomic_fetch_add(&g_perf.dropped_frames, 1, __ATOMIC_RELAXED);
 ```
 
-### 5.15 系统监控 (monitor)
+#### 1.4.5.15. 系统监控 (monitor)
 
 **数据来源**：
 
 | 指标 | 来源 | 更新间隔 |
 |------|------|---------|
-| CPU 使用率 | `/proc/stat` | 2s |
-| 内存使用率 | `/proc/meminfo` | 2s |
-| SoC 温度 | `/sys/class/thermal/thermal_zone1/temp` | 2s |
+| CPU 使用率 | `/proc/stat` | 2 s |
+| 内存使用率 | `/proc/meminfo` | 2 s |
+| SoC 温度 | `/sys/class/thermal/thermal_zone1/temp` | 2 s |
 
-### 5.16 本地显示 (display)
+#### 1.4.5.16. 本地显示 (display)
 
 **显示绘制流程** (bridge_display_show)：
 
@@ -620,24 +687,24 @@ BGR 裸数据 → cv::Mat (零拷贝包装)
 
 ---
 
-## 6. 性能优化分析
+### 1.4.6. 性能优化分析
 
-### 6.1 优化手段总览
+#### 1.4.6.1. 优化手段总览
 
 | 优化技术 | 应用位置 | 效果 |
 |---------|---------|------|
-| **V4L2 mmap + DMA Buffer** | v4l2.c | 内核→用户空间零拷贝 |
-| **无锁环形队列** | ringbuf.h | 线程间通信 < 50ns，无内核态切换 |
+| **V 4 L 2 mmap + DMA Buffer** | v 4 l 2.c | 内核→用户空间零拷贝 |
+| **无锁环形队列** | ringbuf.h | 线程间通信 < 50 ns，无内核态切换 |
 | **Cache Line 对齐** | ringbuf.h | 消除 False Sharing，提升 ~30% 吞吐 |
-| **INT8 量化推理** | detector.cpp | 推理速度 4× 提升，精度损失 < 1% |
+| **INT 8 量化推理** | detector.cpp | 推理速度 4× 提升，精度损失 < 1% |
 | **NPU 硬件加速** | rknn_context.cpp | CPU 占用近乎为零，功耗低 |
 | **引用计数帧共享** | pipeline.c | 多消费者场景避免帧拷贝 |
 | **惰性 BGR 转换** | pipeline.c | 只在需要时转换，编码路径不转换 |
 | **异步日志** | logger.c | 日志 I/O 不阻塞业务线程 |
-| **epoll 异步 I/O** | v4l2.c | 避免轮询，CPU 占用极低 |
+| **epoll 异步 I/O** | v 4 l 2.c | 避免轮询，CPU 占用极低 |
 | **NEON SIMD 颜色转换** | bridge.cpp | OpenCV 内部使用 NEON 加速 |
 
-### 6.2 瓶颈分析
+#### 1.4.6.2. 瓶颈分析
 
 ```
 采集延迟：   ~1ms  (DQBUF + memcpy)          ← 不是瓶颈
@@ -649,22 +716,22 @@ BGR 裸数据 → cv::Mat (零拷贝包装)
 端到端延迟 = ~31ms (处理) + 0~33ms (队列缓冲) = 31~64ms
 ```
 
-**主要瓶颈是 NPU 推理（~25ms/帧）**，但 25ms < 33ms（30fps 帧间隔），所以不会丢帧。
+**主要瓶颈是 NPU 推理（~25 ms/帧）**，但 25 ms < 33 ms（30 fps 帧间隔），所以不会丢帧。
 
-### 6.3 未来优化方向
+#### 1.4.6.3. 未来优化方向
 
 | 方向 | 方案 | 预期效果 |
 |------|------|---------|
-| 硬件编码 | h264_rkmpp 替换 libx264 | 编码延迟 ~5ms → <1ms |
-| RGA 加速 | NV12→BGR 用 RGA 硬件替代 CPU NEON | 转换延迟 ~2ms → <0.5ms |
-| 模型优化 | YOLOv5n / YOLOv8n 替换 YOLOv5s | 推理延迟 ~25ms → ~15ms |
-| DRM 显示 | DRM 直接显示替代 OpenCV X11 | 显示延迟 ~1ms → <0.5ms |
+| 硬件编码 | h 264_rkmpp 替换 libx 264 | 编码延迟 ~5 ms → <1 ms |
+| RGA 加速 | NV 12→BGR 用 RGA 硬件替代 CPU NEON | 转换延迟 ~2 ms → <0.5 ms |
+| 模型优化 | YOLOv 5 n / YOLOv 8 n 替换 YOLOv 5 s | 推理延迟 ~25 ms → ~15 ms |
+| DRM 显示 | DRM 直接显示替代 OpenCV X 11 | 显示延迟 ~1 ms → <0.5 ms |
 
 ---
 
-## 7. 零拷贝实现详解
+### 1.4.7. 零拷贝实现详解
 
-### 7.1 零拷贝层次分析
+#### 1.4.7.1. 零拷贝层次分析
 
 ```
 ┌─────────────────────────────────────────────────┐
@@ -680,24 +747,24 @@ BGR 裸数据 → cv::Mat (零拷贝包装)
 └─────────────────────────────────────────────────┘
 ```
 
-### 7.2 真正的零拷贝环节
+#### 1.4.7.2. 真正的零拷贝环节
 
-1. **V4L2 mmap**：内核 DMA Buffer 映射到用户空间，物理内存共享
+1. **V 4 L 2 mmap**：内核 DMA Buffer 映射到用户空间，物理内存共享
 2. **环形队列**：只传 8 字节指针，不传帧数据
 3. **引用计数**：多消费者共享同一个 frame_t，不拷贝
 4. **cv::Mat 零拷贝构造**：`cv::Mat(h, w, CV_8UC3, bgr_data)` 不分配新内存
 
-### 7.3 必要的拷贝
+#### 1.4.7.3. 必要的拷贝
 
-1. **v4l2_capture 中的 memcpy**：从 DMA buffer 拷贝 NV12 到 frame_t，因为 DMA buffer 循环使用
-2. **NV12→YUV420P**：格式转换（平面重排），不是拷贝，但需要计算
+1. **v 4 l 2_capture 中的 memcpy**：从 DMA buffer 拷贝 NV 12 到 frame_t，因为 DMA buffer 循环使用
+2. **NV 12→YUV 420 P**：格式转换（平面重排），不是拷贝，但需要计算
 3. **display 中的 clone()**：避免绘制时修改原始帧数据
 
 ---
 
-## 8. NPU 推理流程详解
+### 1.4.8. NPU 推理流程详解
 
-### 8.1 完整推理管线
+#### 1.4.8.1. 完整推理管线
 
 ```
 步骤1: 模型加载 (启动时执行一次)
@@ -726,7 +793,7 @@ BGR 裸数据 → cv::Mat (零拷贝包装)
   总耗时: ~30ms（其中 NPU 推理 25ms 是关键路径）
 ```
 
-### 8.2 INT8 量化原理
+#### 1.4.8.2. INT 8 量化原理
 
 ```
 原始 YOLOv5s (FP32, ~28MB)
@@ -738,16 +805,16 @@ NPU 以 INT8 精度执行矩阵乘法
 CPU 反量化：float_val = (int8_val - zp) × scale
 ```
 
-**为什么 INT8 推理精度损失很小？**
+**为什么 INT 8 推理精度损失很小？**
 - 量化校准使用代表性数据集（COCO 验证集子集）
 - 对称量化 + 逐通道 scale 减少了精度损失
-- YOLOv5s INT8 的 mAP 与 FP32 差异通常 < 1%
+- YOLOv 5 s INT 8 的 mAP 与 FP 32 差异通常 < 1%
 
 ---
 
-## 9. 编码推流流程详解
+### 1.4.9. 编码推流流程详解
 
-### 9.1 编码管线
+#### 1.4.9.1. 编码管线
 
 ```
 frame_t.data (NV12)
@@ -773,7 +840,7 @@ av_interleaved_write_frame()
   - TCP send() → RTMP 服务器
 ```
 
-### 9.2 H.264 编码基础
+#### 1.4.9.2. H.264 编码基础
 
 ```
 视频帧序列：
@@ -798,41 +865,41 @@ GOP (Group of Pictures) = 60：
 
 ---
 
-## 10. 端到端延迟分析
+### 1.4.10. 端到端延迟分析
 
-### 10.1 延迟分解
+#### 1.4.10.1. 延迟分解
 
 | 阶段 | 延迟 (ms) | 说明 |
 |------|----------|------|
-| 传感器曝光 | ~3 | IMX415 卷帘快门读取一行 ~33µs × 1080 |
+| 传感器曝光 | ~3 | IMX 415 卷帘快门读取一行 ~33µs × 1080 |
 | ISP 处理 | ~5 | 去马赛克、降噪、白平衡 |
-| V4L2 DQBUF + memcpy | ~1 | mmap 区域 → frame_t |
+| V 4 L 2 DQBUF + memcpy | ~1 | mmap 区域 → frame_t |
 | **采集总计** | **~9** | |
-| NV12→BGR | ~2 | OpenCV cvtColor NEON |
+| NV 12→BGR | ~2 | OpenCV cvtColor NEON |
 | 前处理 (resize) | ~1 | 640×640 |
 | NPU 推理 | ~25 | rknn_run() |
 | 后处理 (解码+NMS) | ~3 | |
 | **推理总计** | **~31** | |
-| NV12→YUV420P | ~2 | sws_scale |
-| x264 编码 | ~5 | libx264 fast preset |
+| NV 12→YUV 420 P | ~2 | sws_scale |
+| x 264 编码 | ~5 | libx 264 fast preset |
 | FLV 封装 + TCP send | ~1 | |
 | **编码总计** | **~8** | |
 | **队列缓冲** | **0~33** | 取决于队列深度和线程速度匹配 |
-| **端到端总计** | **48~81** | < 500ms 目标 ✅ |
+| **端到端总计** | **48~81** | < 500 ms 目标 ✅ |
 
-### 10.2 延迟优化关键
+#### 1.4.10.2. 延迟优化关键
 
 1. **采集侧**：epoll + O_NONBLOCK，避免阻塞等待
-2. **推理侧**：NPU 硬件加速，INT8 量化
+2. **推理侧**：NPU 硬件加速，INT 8 量化
 3. **编码侧**：fast preset，低 GOP（60）
-4. **队列侧**：8 帧缓冲 = 266ms 上限，控制延迟
+4. **队列侧**：8 帧缓冲 = 266 ms 上限，控制延迟
 5. **整体**：生产者-消费者解耦，各线程独立不受阻塞
 
 ---
 
-## 11. 初始化与生命周期
+### 1.4.11. 初始化与生命周期
 
-### 11.1 完整启动流程
+#### 1.4.11.1. 完整启动流程
 
 ```
 main()
@@ -886,24 +953,24 @@ main()
        └─ logger_shutdown()
 ```
 
-### 11.2 资源生命周期矩阵
+#### 1.4.11.2. 资源生命周期矩阵
 
 | 资源 | 创建时刻 | 销毁时刻 | 管理方式 |
 |------|---------|---------|---------|
-| V4L2 fd + mmap | pipeline_create | pipeline_stop | 手动 |
+| V 4 L 2 fd + mmap | pipeline_create | pipeline_stop | 手动 |
 | rknn_context | Detector::init | ~RknnContext | RAII (unique_ptr) |
 | AVCodecContext | encoder_open | encoder_close | 手动 |
 | AVFormatContext | rtmp_open | rtmp_close | 手动 |
 | cv::namedWindow | bridge_display_create | bridge_display_destroy | 手动 |
-| frame_t | v4l2_capture (malloc) | frame_free (refcount=0) | 引用计数 |
+| frame_t | v 4 l 2_capture (malloc) | frame_free (refcount=0) | 引用计数 |
 | ringbuf 存储 | pipeline_create (栈) | pipeline_stop | 静态分配 |
 | pthread_t | pipeline_start | pthread_join | 手动 |
 
 ---
 
-## 12. 异常处理与资源释放
+### 1.4.12. 异常处理与资源释放
 
-### 12.1 分层容错
+#### 1.4.12.1. 分层容错
 
 | 层级 | 策略 | 示例 |
 |------|------|------|
@@ -914,7 +981,7 @@ main()
 | **队列满** | 丢帧 + 统计 | 环形队列满 → 丢弃帧 + perf_record_drop |
 | **内存** | 检查 malloc 返回值 | malloc 失败 → 释放已有资源，返回 NULL |
 
-### 12.2 优雅退出的关键保证
+#### 1.4.12.2. 优雅退出的关键保证
 
 ```
 1. running=0 标志     → 所有线程在下一轮循环时退出
@@ -925,9 +992,9 @@ main()
 
 ---
 
-## 13. 关键结构体速查
+### 1.4.13. 关键结构体速查
 
-### 13.1 frame_t
+#### 1.4.13.1. frame_t
 
 ```c
 typedef struct {
@@ -945,7 +1012,7 @@ typedef struct {
 } frame_t;
 ```
 
-### 13.2 ringbuf_t
+#### 1.4.13.2. ringbuf_t
 
 ```c
 typedef struct {
@@ -958,7 +1025,7 @@ typedef struct {
 } ringbuf_t;
 ```
 
-### 13.3 app_cfg_t
+#### 1.4.13.3. app_cfg_t
 
 ```c
 typedef struct {
@@ -973,9 +1040,9 @@ typedef struct {
 
 ---
 
-## 14. CMake 构建组织
+### 1.4.14. CMake 构建组织
 
-### 14.1 项目结构
+#### 1.4.14.1. 项目结构
 
 ```
 ubuntu/
@@ -1004,7 +1071,7 @@ ubuntu/
 └── run.bash               ← 一键构建+运行脚本
 ```
 
-### 14.2 构建类型
+#### 1.4.14.2. 构建类型
 
 | 类型 | 编译参数 | 场景 |
 |------|---------|------|
@@ -1012,7 +1079,7 @@ ubuntu/
 | Debug | `-O0 -g3` | 开发调试（完整符号） |
 | Release + ASAN | `-O2 -fsanitize=address` | 内存错误检测 |
 
-### 14.3 平台检测
+#### 1.4.14.3. 平台检测
 
 ```cmake
 if(HOST_ARCH MATCHES "aarch64|arm64")
@@ -1024,24 +1091,24 @@ else()
 endif()
 ```
 
-### 14.4 依赖库说明
+#### 1.4.14.4. 依赖库说明
 
 | 库 | 平台 | 用途 |
 |-----|------|------|
 | OpenCV | All | 颜色转换(NEON SIMD)、显示、图像处理 |
-| librknnrt.so | aarch64 | NPU 推理运行时 |
-| librga.so | aarch64 | 硬件 2D 加速(可选) |
+| librknnrt.so | aarch 64 | NPU 推理运行时 |
+| librga.so | aarch 64 | 硬件 2D 加速(可选) |
 | libavcodec | All | H.264 编码 |
 | libavformat | All | FLV 封装 + RTMP |
-| libswscale | All | NV12→YUV420P 格式转换 |
-| libdrm | aarch64 | 直接渲染管理(可选) |
+| libswscale | All | NV 12→YUV 420 P 格式转换 |
+| libdrm | aarch 64 | 直接渲染管理(可选) |
 | libpthread | All | 多线程 |
 
 ---
 
-## 15. run.bash 脚本说明
+### 1.4.15. run.bash 脚本说明
 
-### 15.1 功能
+#### 1.4.15.1. 功能
 
 - **一键构建 + 运行**：`./run.bash`
 - **仅构建**：`./run.bash -b`
@@ -1049,7 +1116,7 @@ endif()
 - **清理重建**：`./run.bash -c`
 - **自定义参数**：`./run.bash -d /dev/video1 -W 1920 -H 1080 -f 30`
 
-### 15.2 构建命令等效
+#### 1.4.15.2. 构建命令等效
 
 ```bash
 mkdir -p build && cd build
@@ -1057,7 +1124,7 @@ cmake .. -DCMAKE_BUILD_TYPE=Release
 make -j$(nproc)
 ```
 
-### 15.3 运行命令等效
+#### 1.4.15.3. 运行命令等效
 
 ```bash
 ./build/rk3568_vision -c config/default.yaml [-d /dev/video0] [-W 640] [-H 480] [-f 15]
@@ -1065,9 +1132,9 @@ make -j$(nproc)
 
 ---
 
-## 16. 附录：常用命令
+### 1.4.16. 附录：常用命令
 
-### 16.1 开发调试
+#### 1.4.16.1. 开发调试
 
 ```bash
 # 构建 (Release)
@@ -1090,7 +1157,7 @@ cmake .. -DCMAKE_BUILD_TYPE=Debug && make -j$(nproc)
 ./build/rk3568_vision -s rtmp://192.168.1.100/live/stream
 ```
 
-### 16.2 性能分析
+#### 1.4.16.2. 性能分析
 
 ```bash
 # 查看日志
@@ -1106,7 +1173,7 @@ cat /sys/kernel/debug/rknpu/load
 grep "PERF" log/rk3568_vision.log
 ```
 
-### 16.3 问题排查
+#### 1.4.16.3. 问题排查
 
 ```bash
 # 检查 V4L2 设备
@@ -1123,6 +1190,6 @@ ffmpeg -re -i test.mp4 -c copy -f flv rtmp://127.0.0.1/live/stream
 
 ---
 
-> **文档版本**：v1.0  
+> **文档版本**：v 1.0  
 > **最后更新**：2026-05-19  
-> **对应代码版本**：rk3568_vision v3.0.0
+> **对应代码版本**：rk 3568_vision v 3.0.0

@@ -56,12 +56,16 @@ void sig_setup(void) {
     memset(&sa, 0, sizeof(sa));
     sa.sa_handler = sig_handler;  /* 信号处理函数 */
     sa.sa_flags   = 0;             /* 无特殊标志 */
-    sigemptyset(&sa.sa_mask);      /* 不阻塞任何额外信号 */
+    sigemptyset(&sa.sa_mask);      /* 不阻塞任何额外信号 不额外屏蔽其它信号*/
 
+    // 向内核注册
     sigaction(SIGINT,  &sa, NULL);   /* Ctrl+C */
     sigaction(SIGTERM, &sa, NULL);   /* kill <pid> / systemd stop */
 
     /* 忽略 SIGPIPE：防止写入已断开 RTMP 连接时进程终止 */
+    // RTMP服务器断开
+    // socket 已关闭
+    // SIGPIPE -> 直接杀死进程
     signal(SIGPIPE, SIG_IGN);
 }
 
