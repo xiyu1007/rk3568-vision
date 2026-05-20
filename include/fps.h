@@ -1,25 +1,31 @@
-#ifndef __FPS_H__
-#define __FPS_H__
+/*
+ * ==========================================================================
+ * fps.h — 帧率统计模块头文件
+ * ==========================================================================
+ *
+ * **FPS 统计**：使用 500ms 滑动窗口计算实时帧率
+ *   各工作线程在每帧处理后调用 fps_tick()
+ *   显示线程通过 fps_get() 获取当前 FPS 值用于叠加显示
+ */
 
-#include <opencv2/opencv.hpp>
+#ifndef FPS_H
+#define FPS_H
 
-void fps_update(void);
+#ifdef __cplusplus
+extern "C" {
+#endif
+
+/* 记录一帧（帧计数器 +1，每 500ms 计算一次 FPS） */
+void   fps_tick(void);
+
+/* 获取当前 FPS 值（双精度浮点） */
 double fps_get(void);
 
-// 基础函数
-void fps_show(cv::Mat img, cv::Point position, cv::Scalar color, double font_scale, int thickness);
+/* 重置 FPS 统计器 */
+void   fps_reset(void);
 
-// 重载版本 - 提供默认参数
-inline void fps_show(cv::Mat img, cv::Point position = cv::Point(15, 35), cv::Scalar color = cv::Scalar(0, 255, 0)) {
-    fps_show(img, position, color, 0.8, 2);
+#ifdef __cplusplus
 }
+#endif
 
-// 带背景框的基础函数
-void fps_show_with_box(cv::Mat img, cv::Point position, cv::Scalar color, double font_scale, int thickness);
-
-// 重载版本 - 提供默认参数
-inline void fps_show_with_box(cv::Mat img, cv::Point position = cv::Point(15, 35), cv::Scalar color = cv::Scalar(0, 255, 0)) {
-    fps_show_with_box(img, position, color, 0.8, 2);
-}
-
-#endif /* __FPS_H__ */
+#endif /* FPS_H */

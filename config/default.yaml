@@ -1,0 +1,109 @@
+# ============================================================================
+# RK3568 Vision Pipeline 默认配置文件
+# ============================================================================
+#
+# **文件说明**：此 YAML 文件定义了整个流水线的所有运行参数
+#   可通过命令行参数覆盖（如 -W 1920 -H 1080 -f 30）
+#   也可通过 -c 参数指定其他配置文件
+#
+# **配置结构**：
+#   capture   — V4L2 视频采集参数（设备、分辨率、帧率、格式）
+#   inference — RKNN 推理参数（模型、阈值、NPU 核心）
+#   encode    — H.264 编码参数（码率、GOP）
+#   stream    — RTMP 推流参数（URL、重连策略）
+#   display   — 本地显示参数（窗口名、FPS 叠加）
+#   monitor   — 性能监控参数（日志间隔）
+#   logging   — 日志系统参数（级别、文件、异步模式）
+#   system    — 系统参数（输出目录、临时目录）
+# ============================================================================
+
+# --- 视频采集 (V4L2) ---
+capture:
+  device:         "/dev/video0"       # V4L2 设备节点（IMX415 MIPI 摄像头）
+  width:          640                  # 采集宽度（像素）— 开发调试可用 640×480
+  height:         480                  # 采集高度（像素）— 生产环境推荐 1920×1080
+  fps:            15                   # 目标帧率 — 15fps 用于低功耗调试，30fps 用于生产
+  pixel_format:   NV12              # 像素格式：
+                                       #   NV12 — ISP 直接输出，NPU 可直接消费（推荐）
+                                       #   MJPEG — 压缩格式，占用带宽小但质量有损
+                                       #   YUYV — 未压缩，质量最好但带宽大
+  buffer_count:   6                    # V4L2 DMA buffer 数量（4~8，建议6）
+                                       # 太少 → 容易丢帧（驱动填充跟不上用户处理）
+                                       # 太多 → 增加内存占用和延迟（每个 1080P buffer ≈ 3MB）
+  buffer_type:    MPLANE            # MPLANE（多平面 V4L2 API）/ SINGLE
+
+# --- RKNN 推理 ---
+inference:
+  enabled:        true                 # 是否启用 NPU 推理（false = 纯编码推流模式）
+  model_path:     "model/yolov5s.rknn" # RKNN 量化模型文件路径
+  labels_path:    "model/coco_80_labels_list.txt"  # COCO 80 类标签文件
+  conf_threshold: 0.25                # 置信度阈值（低于此值的检测被丢弃）
+                                       # 提高 → 减少误检但可能漏检（推荐 0.25~0.5）
+                                       # 降低 → 更多检测但误检增加
+  nms_threshold:  0.45                # NMS IoU 阈值（高于此值的重叠框被抑制）
+                                       # 提高 → 保留更多重叠框（可能重复检测）
+                                       # 降低 → 更激进地去重
+  model_width:    640                 # 模型输入宽度（YOLOv5s 固定 640）
+  model_height:   640                 # 模型输入高度（YOLOv5s 固定 640）
+  quantized:      true                # INT8 量化推理（推荐：速度快 4×，精度损失 <1%）
+  npu_core:       0                   # NPU 核心号
+                                       # RK3568 只有 1 个 NPU 核心 → 固定为 0
+                                       # RK3588 有 3 个 NPU 核心 → 可选 0/1/2
+
+# --- 编码 (H.264) ---
+# 分辨率/FPS/像素格式自动跟随 capture 配置（无需重复设置）
+encode:
+  enabled:        true                # 是否启用 H.264 编码
+  codec:          "h264"              # 编码格式：h264（兼容性最好）/ h265（更高压缩比）
+  bitrate:         4000000             # 码率 (bps)
+                                       # 1080P@30fps：建议 4,000,000~6,000,000
+                                       # 640×480@15fps：建议 1,000,000~2,000,000
+  gop_size:       60                  # 关键帧间隔（帧数）
+                                       # 60 @ 30fps = 每 2 秒一个 I 帧
+                                       # 值越小 → 播放器启播越快，但编码效率越低
+  preset:         "fast"              # x264 preset：ultrafast/fast/medium
+                                       # fast — 平衡速度和效率（推荐）
+                                       # ultrafast — 最快但码流最大
+  profile:        "high"              # x264 profile：baseline/main/high
+                                       # high — 支持 B 帧和 CABAC，效率最高
+
+# --- RTMP 推流 ---
+stream:
+  enabled:        false               # 是否启用 RTMP 推流
+  url:            "rtmp://127.0.0.1/live/stream"  # RTMP 服务器地址
+                                       # 本地测试：rtmp://127.0.0.1/live/stream
+                                       # Nginx-RTMP：rtmp://192.168.1.x/live/stream
+                                       # B站直播：rtmp://live-push.bilivideo.com/live-bvc/...
+  reconnect:      true                # 断流自动重连（网络抖动时自动恢复）
+  reconnect_delay: 2000              # 重连间隔（毫秒）
+  max_reconnect:  10                  # 最大重连次数（-1 = 无限重连）
+
+# --- 本地显示 ---
+display:
+  enabled:        true                # 是否启用 OpenCV 本地显示
+  window_name:    "RK3568 Vision"     # 窗口标题
+  show_fps:       true                # 是否在画面左上角叠加 FPS 实时帧率
+  show_osd:       true                # 是否显示 OSD 信息（检测框 + 标签）
+
+# --- 性能监控 ---
+monitor:
+  enabled:        true                # 是否启用系统监控（CPU/内存/温度）
+  log_interval:   5000                # 性能日志输出间隔（毫秒）— 5 秒
+
+# --- 日志 ---
+logging:
+  level:          "info"              # 日志级别：debug / info / warn / error
+                                       # debug — 输出所有日志（用于问题排查）
+                                       # info  — 输出重要信息和警告（推荐生产使用）
+  file:           "log/rk3568_vision.log"  # 日志文件路径
+  console:        true                # 是否同时输出到控制台（stderr）
+  async:          true                # 异步日志：
+                                       # true  — 日志不阻塞业务线程（推荐）
+                                       # false — 同步写入（崩溃时可保留所有日志）
+  max_size:       10485760            # 单个日志文件最大 10MB（预留，当前未实现轮转）
+  backup_count:   3                   # 保留备份数量（预留，当前未实现轮转）
+
+# --- 系统 ---
+system:
+  output_dir:     "output"            # 输出目录（预留）
+  temp_dir:       "tmp"               # 临时文件目录（预留）
