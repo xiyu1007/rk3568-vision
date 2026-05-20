@@ -80,3 +80,5 @@ if [ $RUN -eq 1 ]; then
     echo "=== Running $BIN $ARGS ==="
     exec "$BIN" $ARGS                    # exec 替换当前 bash 进程（节省内存）
 fi
+
+# ffplay rtmp://192.168.31.28/live/stream

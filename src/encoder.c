@@ -116,6 +116,7 @@ encoder_t* encoder_open(uint32_t w, uint32_t h, uint32_t fps,
     e->ctx->pix_fmt   = AV_PIX_FMT_YUV420P;
     e->ctx->bit_rate  = bitrate;
     e->ctx->gop_size  = gop;
+    e->ctx->max_b_frames = 0;
 
     /* 打开编码器 */
     int ret = avcodec_open2(e->ctx, codec, NULL);

@@ -233,13 +233,13 @@ DetectResult Detector::detect(const cv::Mat& bgr) {
     cv::Mat input = preprocess(bgr);
     int img_w = bgr.cols, img_h = bgr.rows;
     int mw = rknn_->input_width(), mh = rknn_->input_height();
-
+    float scale_x = (float)img_w / (float)mw;
     /*
      * 计算缩放系数
      * 用于将检测框坐标从模型空间映射回原始图像空间
      * scale = min(mw/img_w, mh/img_h) 保证等比例缩放
      */
-    float scale = std::min((float)mw / img_w, (float)mh / img_h);
+    float scale_y = (float)img_h / (float)mh;
 
     /*
      * 设置 NPU 输入
@@ -285,30 +285,12 @@ DetectResult Detector::detect(const cv::Mat& bgr) {
     struct Detection { float x, y, w, h, conf; int cls; };
     std::vector<Detection> dets;
     const int strides[3] = {8, 16, 32};  /* 三个输出头的下采样倍率 */
+    const int anchors[3][6] = {
+        {10,13, 16,30, 33,23},     // stride 8  (small objects)
+        {30,61, 62,45, 59,119},    // stride 16 (medium objects)
+        {116,90, 156,198, 373,326} // stride 32 (large objects)
+    };
 
-    /*
-     * 对三个输出头分别处理
-     * YOLOv5s 使用 INT8 量化，每个输出是一个一维 int8 数组
-     *
-     * 内存布局（以 stride=8, 80×80 网格为例）：
-     *   PROP_BOX_SIZE=85, glen=6400 (80×80), 总大小=3*85*6400=1,632,000
-     *
-     *   第1个 anchor: data[0*85*6400 .. 1*85*6400-1]
-     *   第2个 anchor: data[1*85*6400 .. 2*85*6400-1]
-     *   第3个 anchor: data[2*85*6400 .. 3*85*6400-1]
-     *
-     *   每个 anchor 的 85 个值在连续内存中排列为：
-     *     offset+0*glen → tx（x 偏移）
-     *     offset+1*glen → ty（y 偏移）
-     *     offset+2*glen → tw（宽度缩放）
-     *     offset+3*glen → th（高度缩放）
-     *     offset+4*glen → objectness（目标置信度）
-     *     offset+5*glen .. offset+84*glen → 80 个类别概率
-     *
-     *   注意：数据按 (网格点, 属性) 而非 (属性, 网格点) 排列
-     *   即 offset = prop_idx * glen + grid_y * gw + grid_x
-     *   而不是 offset = grid_y * gw * PROP_BOX_SIZE + grid_x * PROP_BOX_SIZE + prop_idx
-     */
     for (uint32_t o = 0; o < rknn_->output_count() && o < 3; o++) {
         auto& attr = rknn_->output_attr(o);
         int stride  = strides[o];             /* 该输出头的下采样倍率 */
@@ -372,31 +354,14 @@ DetectResult Detector::detect(const cv::Mat& bgr) {
                      */
 
                     /* 反量化 + sigmoid 转换四个回归参数 */
-                    float tx = sigmoid_f(deqnt_affine_to_f32(data[off + 0*glen], qzp, qscale));
-                    float ty = sigmoid_f(deqnt_affine_to_f32(data[off + 1*glen], qzp, qscale));
-                    float tw = sigmoid_f(deqnt_affine_to_f32(data[off + 2*glen], qzp, qscale));
-                    float th = sigmoid_f(deqnt_affine_to_f32(data[off + 3*glen], qzp, qscale));
+                    float bx = (sigmoid_f(deqnt_affine_to_f32(data[off], qzp, qscale)) * 2.0f - 0.5f + gx) * stride;
+                    float by = (sigmoid_f(deqnt_affine_to_f32(data[off + 1*glen], qzp, qscale)) * 2.0f - 0.5f + gy) * stride;
+                    float bw = powf(sigmoid_f(deqnt_affine_to_f32(data[off + 2*glen], qzp, qscale)) * 2.0f, 2) * (float)anchors[o][2*a];
+                    float bh = powf(sigmoid_f(deqnt_affine_to_f32(data[off + 3*glen], qzp, qscale)) * 2.0f, 2) * (float)anchors[o][2*a+1];
 
-                    /* 解码边界框中心坐标 */
-                    float bx = (tx * 2.0f - 0.5f + gx) * stride;
-                    float by = (ty * 2.0f - 0.5f + gy) * stride;
-
-                    /* 解码边界框宽高（pow(sigmoid*2, 2) * anchor） */
-                    float bw = powf(tw * 2.0f, 2) * (float)(a==0?10:a==1?16:30);
-                    float bh = powf(th * 2.0f, 2) * (float)(a==0?13:a==1?30:62);
-
-                    /*
-                     * 将坐标从模型空间 (640×640) 映射回原始图像空间
-                     * 转换为 (x_min, y_min, width, height) 格式（OpenCV Rect 格式）
-                     */
-                    dets.push_back({
-                        (bx - bw*0.5f) / scale,                           /* x_min   */
-                        (by - bh*0.5f) / scale,                           /* y_min   */
-                        (bx + bw*0.5f) / scale - (bx - bw*0.5f) / scale,  /* width   */
-                        (by + bh*0.5f) / scale - (by - bh*0.5f) / scale,  /* height  */
-                        score,                                             /* 置信度  */
-                        max_cls                                            /* 类别ID  */
-                    });
+                    dets.push_back({(bx - bw*0.5f) * scale_x, (by - bh*0.5f) * scale_y,
+                                    bw * scale_x, bh * scale_y,
+                                    score, max_cls});
                 }
             }
         }
@@ -424,11 +389,10 @@ DetectResult Detector::detect(const cv::Mat& bgr) {
     for (size_t i = 0; i < dets.size(); i++) {
         if (!keep[i]) continue;
         for (size_t j = i + 1; j < dets.size(); j++) {
-            if (!keep[j] || dets[i].cls != dets[j].cls) continue;  /* 不同类别不比较 */
+            if (!keep[j] || dets[i].cls != dets[j].cls) continue;
             if (calc_iou(dets[i].x, dets[i].y, dets[i].x+dets[i].w, dets[i].y+dets[i].h,
-                         dets[j].x, dets[j].y, dets[j].x+dets[j].w, dets[j].y+dets[j].h)
-                > nms_threshold_)
-                keep[j] = 0;  /* 抑制重叠框 */
+                         dets[j].x, dets[j].y, dets[j].x+dets[j].w, dets[j].y+dets[j].h) > nms_threshold_)
+                keep[j] = 0;
         }
     }
 

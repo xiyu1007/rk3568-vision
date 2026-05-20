@@ -35,8 +35,8 @@ capture:
 # --- RKNN 推理 ---
 inference:
   enabled:        true                 # 是否启用 NPU 推理（false = 纯编码推流模式）
-  model_path:     "model/yolov5s.rknn" # RKNN 量化模型文件路径
-  labels_path:    "model/coco_80_labels_list.txt"  # COCO 80 类标签文件
+  model_path:      "/home/gx/linux/rk3568/rk3568-vision/model/yolov5s.rknn"
+  labels_path:     "/home/gx/linux/rk3568/rk3568-vision/model/coco_80_labels_list.txt"
   conf_threshold: 0.25                # 置信度阈值（低于此值的检测被丢弃）
                                        # 提高 → 减少误检但可能漏检（推荐 0.25~0.5）
                                        # 降低 → 更多检测但误检增加
@@ -69,10 +69,10 @@ encode:
 
 # --- RTMP 推流 ---
 stream:
-  enabled:        false               # 是否启用 RTMP 推流
+  enabled: true  # 启用推流
   url:            "rtmp://127.0.0.1/live/stream"  # RTMP 服务器地址
                                        # 本地测试：rtmp://127.0.0.1/live/stream
-                                       # Nginx-RTMP：rtmp://192.168.1.x/live/stream
+  url:            "rtmp://192.168.31.28/live/stream"
                                        # B站直播：rtmp://live-push.bilivideo.com/live-bvc/...
   reconnect:      true                # 断流自动重连（网络抖动时自动恢复）
   reconnect_delay: 2000              # 重连间隔（毫秒）
