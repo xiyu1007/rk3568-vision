@@ -16,8 +16,8 @@ capture:
 # --- RKNN 推理 ---
 inference:
   enabled:        true                 # 是否启用推理
-  model_path:     "model/yolov5s.rknn" # RKNN 模型路径
-  labels_path:    "model/coco_80_labels_list.txt"
+  model_path:      "/home/gx/linux/rk3568/rk3568-vision/model/yolov5s.rknn"
+  labels_path:     "/home/gx/linux/rk3568/rk3568-vision/model/coco_80_labels_list.txt"
   conf_threshold: 0.25                # 置信度阈值
   nms_threshold:  0.45                # NMS 阈值
   model_width:    640                 # 模型输入宽度
@@ -37,8 +37,8 @@ encode:
 
 # --- RTMP 推流 ---
 stream:
-  enabled:        false               # 是否启用推流
-  url:            "rtmp://127.0.0.1/live/stream"
+  enabled: true  # 启用推流
+  url:            "rtmp://192.168.31.28/live/stream"
   reconnect:      true                # 断流自动重连
   reconnect_delay: 2000              # 重连延迟 (ms)
   max_reconnect:  10                  # 最大重连次数 (-1=无限)

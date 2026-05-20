@@ -82,7 +82,8 @@ DetectResult Detector::detect(const cv::Mat& bgr) {
     cv::Mat input = preprocess(bgr);
     int img_w = bgr.cols, img_h = bgr.rows;
     int mw = rknn_->input_width(), mh = rknn_->input_height();
-    float scale = std::min((float)mw / img_w, (float)mh / img_h);
+    float scale_x = (float)img_w / (float)mw;
+    float scale_y = (float)img_h / (float)mh;
 
     rknn_input rknn_in[1];
     memset(rknn_in, 0, sizeof(rknn_in));
@@ -103,6 +104,11 @@ DetectResult Detector::detect(const cv::Mat& bgr) {
     struct Detection { float x, y, w, h, conf; int cls; };
     std::vector<Detection> dets;
     const int strides[3] = {8, 16, 32};
+    const int anchors[3][6] = {
+        {10,13, 16,30, 33,23},     // stride 8  (small objects)
+        {30,61, 62,45, 59,119},    // stride 16 (medium objects)
+        {116,90, 156,198, 373,326} // stride 32 (large objects)
+    };
 
     for (uint32_t o = 0; o < rknn_->output_count() && o < 3; o++) {
         auto& attr = rknn_->output_attr(o);
@@ -133,12 +139,11 @@ DetectResult Detector::detect(const cv::Mat& bgr) {
 
                     float bx = (sigmoid_f(deqnt_affine_to_f32(data[off], qzp, qscale)) * 2.0f - 0.5f + gx) * stride;
                     float by = (sigmoid_f(deqnt_affine_to_f32(data[off + 1*glen], qzp, qscale)) * 2.0f - 0.5f + gy) * stride;
-                    float bw = powf(sigmoid_f(deqnt_affine_to_f32(data[off + 2*glen], qzp, qscale)) * 2.0f, 2) * (float)(a==0?10:a==1?16:30);
-                    float bh = powf(sigmoid_f(deqnt_affine_to_f32(data[off + 3*glen], qzp, qscale)) * 2.0f, 2) * (float)(a==0?13:a==1?30:62);
+                    float bw = powf(sigmoid_f(deqnt_affine_to_f32(data[off + 2*glen], qzp, qscale)) * 2.0f, 2) * (float)anchors[o][2*a];
+                    float bh = powf(sigmoid_f(deqnt_affine_to_f32(data[off + 3*glen], qzp, qscale)) * 2.0f, 2) * (float)anchors[o][2*a+1];
 
-                    dets.push_back({(bx - bw*0.5f)/scale, (by - bh*0.5f)/scale,
-                                    (bx + bw*0.5f)/scale - (bx - bw*0.5f)/scale,
-                                    (by + bh*0.5f)/scale - (by - bh*0.5f)/scale,
+                    dets.push_back({(bx - bw*0.5f) * scale_x, (by - bh*0.5f) * scale_y,
+                                    bw * scale_x, bh * scale_y,
                                     score, max_cls});
                 }
             }

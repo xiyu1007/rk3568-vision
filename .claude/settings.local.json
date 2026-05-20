@@ -1,0 +1,24 @@
+{
+  "permissions": {
+    "allow": [
+      "Bash(dpkg -l)",
+      "Bash(apt list *)",
+      "Bash(awk '{print $1}')",
+      "Bash(nginx -V)",
+      "Bash(sudo apt-get *)",
+      "Bash(dpkg -l build-essential libpcre3-dev libssl-dev zlib1g-dev)",
+      "Bash(awk '{print $2, $3}')",
+      "Bash(ffplay -version)",
+      "Bash(ffmpeg -version)",
+      "Bash(git clone *)",
+      "Bash(/home/gx/nginx-rtmp/sbin/nginx *)",
+      "Bash(mkdir -p /home/gx/nginx-rtmp/logs)",
+      "Bash(netstat -tlnp)",
+      "Bash(ffmpeg -f lavfi -i \"testsrc=duration=5:size=640x480:rate=15\" -f flv rtmp://192.168.31.28/live/stream)",
+      "Bash(timeout 5 ffplay -autoexit rtmp://192.168.31.28/live/stream)",
+      "Bash(echo \"Exit: $?\")",
+      "Bash(ssh *)",
+      "Bash(rsync -avz --progress --exclude=build/ --exclude=log/ --exclude=.git/ --exclude=third_lib/ --exclude=share/ '--exclude=*.mp4' '--exclude=*.jpg' /home/gx/linux/rk3568/rk3568-vision/ rk:/home/gx/linux/rk3568/rk3568-vision/)"
+    ]
+  }
+}
