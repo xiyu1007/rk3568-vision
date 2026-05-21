@@ -160,10 +160,10 @@ message(STATUS "OpenCV: ${OpenCV_VERSION}")
 # RK3568 的 NPU 推理运行时库
 # 优先使用系统安装的 librknnrt.so，否则使用 third_lib 中的版本
 if(IS_RK3568)
-    find_package(RKNN QUIET)
-    if(RKNN_FOUND)
-        target_link_libraries(${PROJECT_NAME} PRIVATE RKNN::RKNN)
-        message(STATUS "RKNN: ${RKNN_VERSION}")
+    if(EXISTS "/usr/lib/librknnrt.so" AND EXISTS "/usr/include/rknn_api.h")
+        target_include_directories(${PROJECT_NAME} PRIVATE /usr/include)
+        target_link_libraries(${PROJECT_NAME} PRIVATE /usr/lib/librknnrt.so)
+        message(STATUS "RKNN: path /usr/include/rknn_api.h")
     else()
         # 手动指定 RKNN 库路径
         set(RKNN_LIB_DIR "${CMAKE_SOURCE_DIR}/third_lib/librknn_api" CACHE PATH "RKNN lib path")

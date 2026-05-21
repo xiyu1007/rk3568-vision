@@ -44,7 +44,7 @@ public:
     ~RknnContext();
 
     /* 禁止拷贝（防止双重释放 rknn_context） */
-    RknnContext(const RknnContext&) = delete;
+    RknnContext(const RknnContext&) = delete; // 等号后面的 = delete 是一个整体语法标记，用于显式禁用该函数。
     RknnContext& operator=(const RknnContext&) = delete;
 
     /* 初始化：加载模型 + 创建上下文 + 查询张量属性 */
@@ -79,7 +79,13 @@ private:
     rknn_input_output_num io_num_{0, 0};       /* 输入/输出数量 */
 
     /* 自定义 Deleter：用 free 释放 calloc 分配的内存 */
-    struct AttrDeleter { void operator()(rknn_tensor_attr* p) { free(p); } };
+    struct AttrDeleter { 
+        void operator()(rknn_tensor_attr* p) 
+        { free(p); } 
+    };
+    // 重载了 operator()，使其可以像函数一样调用
+    // std::unique_ptr 在析构时会调用 deleter(p)   
+    
     std::unique_ptr<rknn_tensor_attr, AttrDeleter> input_attrs_;   /* 输入属性 */
     std::unique_ptr<rknn_tensor_attr, AttrDeleter> output_attrs_;  /* 输出属性 */
 };

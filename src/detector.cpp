@@ -123,7 +123,7 @@ static float calc_iou(float x1_a, float y1_a, float x2_a, float y2_a,
  *  Detector 实现
  * ========================================================================== */
 
-Detector::Detector() = default;
+Detector::Detector() = default; // 类内声明，类外实现，这里的实现是 = default 是函数体（让编译器生成默认实现）
 Detector::~Detector() = default;  /* rknn_ 的 unique_ptr 自动释放 */
 
 /*
@@ -143,6 +143,9 @@ Detector::~Detector() = default;  /* rknn_ 的 unique_ptr 自动释放 */
 bool Detector::init(const std::string& model_path, const std::string& labels_path,
                     float conf, float nms, uint32_t npu_core) {
     conf_threshold_ = conf; nms_threshold_ = nms;
+
+    // 成员函数 init 内部可以直接使用 labels_、conf_threshold_ 等成员变量，
+    // 是因为每个成员函数都有一个隐藏的 this 指针，指向调用该函数的对象。
 
     /* 加载标签文件（COCO 80 类） */
     std::ifstream lf(labels_path);

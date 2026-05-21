@@ -62,24 +62,6 @@ bool RknnContext::release_outputs(rknn_output*, uint32_t) { return false; }
 namespace rk3568_vision {
 
 /*
- * 将模型文件完整加载到 std::vector<uint8_t> 中
- * 使用 RAII 管理内存：函数返回 vector，调用者自动持有
- * 如果加载失败返回空 vector，init() 中检查后返回 false
- */
-static std::vector<uint8_t> load_file(const std::string& path) {
-    FILE* fp = fopen(path.c_str(), "rb");
-    if (!fp) { LOG_ERROR("Cannot open model: %s", path.c_str()); return {}; }
-    fseek(fp, 0, SEEK_END);
-    long size = ftell(fp);
-    fseek(fp, 0, SEEK_SET);
-    std::vector<uint8_t> data(size);
-    fread(data.data(), 1, size, fp);
-    fclose(fp);
-    LOG_INFO("Model loaded: %s (%ld bytes)", path.c_str(), size);
-    return data;
-}
-
-/*
  * 析构函数：自动清理 RKNN 上下文
  * 如果 ctx_ != 0，销毁运行时，释放 NPU 资源
  */
@@ -109,17 +91,13 @@ RknnContext::~RknnContext() {
  *     反量化公式：float_val = (int8_val - zp) * scale
  */
 bool RknnContext::init(const std::string& model_path, uint32_t npu_core) {
-    /* 1. 加载模型文件 */
-    model_data_ = load_file(model_path);
-    if (model_data_.empty()) return false;
 
     /* 2. 创建 RKNN 运行时 */
-    int ret = rknn_init(&ctx_, model_data_.data(), model_data_.size(), 0, nullptr);
+    // size=0 表示是路径, // size>0 表示是二进制数据
+    std::vector<char> path_buffer(model_path.begin(), model_path.end());
+    path_buffer.push_back('\0');  // 确保 null 结尾
+    int ret = rknn_init(&ctx_, path_buffer.data(), 0, 0, nullptr);
     if (ret < 0) { LOG_ERROR("rknn_init failed: ret=%d", ret); return false; }
-
-    /* 3. 设置 NPU 核心 */
-    rknn_set_core_mask(ctx_, (npu_core == 0) ? RKNN_NPU_CORE_0
-                          : (npu_core == 1) ? RKNN_NPU_CORE_1 : RKNN_NPU_CORE_2);
 
     /* 4. 查询输入/输出数量 */
     ret = rknn_query(ctx_, RKNN_QUERY_IN_OUT_NUM, &io_num_, sizeof(io_num_));
@@ -136,7 +114,8 @@ bool RknnContext::init(const std::string& model_path, uint32_t npu_core) {
     input_attrs_.reset(static_cast<rknn_tensor_attr*>(
         calloc(io_num_.n_input, sizeof(rknn_tensor_attr))));
     for (uint32_t i = 0; i < io_num_.n_input; ++i) {
-        input_attrs_.get()[i].index = i;
+        input_attrs_.get()[i].index = i;  // input_attrs_.get() 返回原始指针， 设置输入索引号（RKNN 要求）
+        // RKNN 会填充这个结构体 input_attrs_.get()[i] 即 rknn_tensor_attr
         ret = rknn_query(ctx_, RKNN_QUERY_INPUT_ATTR,
                           &input_attrs_.get()[i], sizeof(rknn_tensor_attr));
         if (ret < 0) { LOG_ERROR("input attr[%u] failed", i); return false; }

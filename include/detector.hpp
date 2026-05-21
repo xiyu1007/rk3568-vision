@@ -39,8 +39,8 @@ using DetectResult = detect_result_t;  /* C 兼容的检测结果类型 */
 
 class Detector {
 public:
-    Detector();
-    ~Detector();
+    Detector();    // 声明构造函数， 类内声明，类外实现
+    ~Detector();  // 声明构造函数
 
     /*
      * 初始化检测器

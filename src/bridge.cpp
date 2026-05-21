@@ -61,7 +61,7 @@ void bridge_detector_destroy(void* d) {
  */
 int bridge_detector_init(void* d, const char* model, const char* labels,
                           float conf, float nms, uint32_t npu_core) {
-    auto* det = static_cast<rk3568_vision::Detector*>(d);
+    auto* det = static_cast<rk3568_vision::Detector*>(d); // 将 void* 指针转换回原来的 C++ 对象指针类型。
     return det->init(model, labels, conf, nms, npu_core) ? 1 : 0;
 }
 
