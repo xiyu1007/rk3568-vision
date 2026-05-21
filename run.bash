@@ -37,6 +37,12 @@ cd "$(dirname "$0")"       # 切换到脚本所在目录
 BIN="build/rk3568_vision"  # 可执行文件路径
 CFG="config/default.yaml"  # 默认配置文件路径
 
+# ROOT_PWD=$(cd "$(dirname "$0")" && pwd)
+# # build
+# BUILD_DIR=${ROOT_PWD}/build/
+# rm -rf ${BUILD_DIR}
+# mkdir -p ${BUILD_DIR}
+
 # 默认行为：构建 + 运行，不清理，不启用推理/显示的额外选项
 BUILD=1 RUN=1 CLEAN=0 INF=0 DISP=0
 

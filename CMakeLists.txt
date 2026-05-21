@@ -29,6 +29,10 @@ project(${PROJECT_NAME}
     LANGUAGES C CXX                             # 同时启用 C 和 C++ 编译器
 )
 
+set(OPENCV_PATH "/third_lib/opencv")
+set(RKNN_PATH "/third_lib/librknn_api")
+set(RGA_PATH "/third_lib/rga")
+
 # ---------------------------------------------------------------------------
 # 编译选项
 # ---------------------------------------------------------------------------
@@ -87,51 +91,14 @@ if(ENABLE_ASAN)
     add_link_options(-fsanitize=address)
 endif()
 
-set(SOURCES
-    src/main.c
-    src/config.c
-    src/logger.c
-    src/fps.c
-    src/sig.c
-    src/v4l2.c
-    src/perf.c
-    src/monitor.c
-    src/encoder.c
-    src/rtmp.c
-    src/rknn.c
-    src/rknn_context.cpp
-    src/pipeline.c
-    src/bridge.cpp
-    src/detector.cpp
-    src/display.cpp
+file(GLOB SRC_C src/*.c)
+file(GLOB SRC_CC src/*.cc)
+file(GLOB SRC_CPP src/*.cpp)
+add_executable(${PROJECT_NAME}
+    ${SRC_C}
+    ${SRC_CC}
+    ${SRC_CPP}
 )
-
-# ---------------------------------------------------------------------------
-# 源文件列表（混合 C 和 C++）
-# ---------------------------------------------------------------------------
-set(SOURCES
-    src/main.c           # 程序入口
-    src/config.c          # YAML 配置解析
-    src/logger.c          # 异步日志系统
-    src/fps.c             # 帧率统计
-    src/sig.c             # 信号处理
-    src/v4l2.c            # V4L2 视频采集
-    src/perf.c            # 性能计数器
-    src/monitor.c         # 系统监控（CPU/内存/温度）
-    src/encoder.c         # FFmpeg H.264 编码
-    src/rtmp.c            # RTMP 推流
-    src/rknn.c            # RKNN C 封装
-    src/rknn_context.cpp  # RKNN C++ RAII 封装
-    src/pipeline.c        # 流水线核心编排
-    src/bridge.cpp        # C/C++ 桥接层
-    src/detector.cpp      # YOLOv5 检测器
-    src/display.cpp       # OpenCV 显示窗口
-)
-
-# ---------------------------------------------------------------------------
-# 可执行文件目标
-# ---------------------------------------------------------------------------
-add_executable(${PROJECT_NAME} ${SOURCES})
 
 # 头文件搜索路径
 target_include_directories(${PROJECT_NAME} PRIVATE
@@ -149,50 +116,57 @@ target_compile_definitions(${PROJECT_NAME} PRIVATE
 # ---------------------------------------------------------------------------
 
 # --- OpenCV ---
-# 必需组件：core（基础）、imgproc（图像处理）、imgcodecs（图像编解码）、
-#           videoio（视频I/O）、highgui（GUI显示）
-find_package(OpenCV REQUIRED COMPONENTS core imgproc imgcodecs videoio highgui)
-target_include_directories(${PROJECT_NAME} PRIVATE ${OpenCV_INCLUDE_DIRS})
-target_link_libraries(${PROJECT_NAME} PRIVATE ${OpenCV_LIBS})
-message(STATUS "OpenCV: ${OpenCV_VERSION}")
+message(STATUS "=========================================================")
+if(EXISTS "${CMAKE_SOURCE_DIR}/${OPENCV_PATH}/lib/cmake/opencv4") 
+    message(STATUS "Using custom OpenCV")
+
+    set(OpenCV_DIR "${CMAKE_SOURCE_DIR}/${OPENCV_PATH}/lib/cmake/opencv4")
+    find_package(OpenCV REQUIRED) # 默认使用 CONFIG 模式（寻找 OpenCVConfig.cmake
+    include_directories(${OpenCV_INCLUDE_DIRS})
+    target_link_libraries(${PROJECT_NAME} PRIVATE ${OpenCV_LIBS}
+    )
+    message(STATUS "OpenCV version: ${OpenCV_VERSION}")
+    message(STATUS "OpenCV include path: ${OpenCV_INCLUDE_DIRS}")
+else()
+    message(STATUS "Using system OpenCV")
+    # # 【原生编译模式】(x86 Ubuntu 或 RK 本机) 使用系统 find_package
+    find_package(OpenCV REQUIRED)
+    # find_package(OpenCV REQUIRED COMPONENTS core imgproc imgcodecs videoio highgui)
+    target_include_directories(${PROJECT_NAME} PRIVATE ${OpenCV_INCLUDE_DIRS})
+    target_link_libraries(${PROJECT_NAME} PRIVATE ${OpenCV_LIBS})
+
+    message(STATUS "OpenCV version: ${OpenCV_VERSION}")
+    message(STATUS "OpenCV include path: ${OpenCV_INCLUDE_DIRS}")
+endif()
 
 # --- RKNN（仅 aarch64 平台） ---
+message(STATUS "=========================================================")
 # RK3568 的 NPU 推理运行时库
 # 优先使用系统安装的 librknnrt.so，否则使用 third_lib 中的版本
-if(IS_RK3568)
-    if(EXISTS "/usr/lib/librknnrt.so" AND EXISTS "/usr/include/rknn_api.h")
-        target_include_directories(${PROJECT_NAME} PRIVATE /usr/include)
-        target_link_libraries(${PROJECT_NAME} PRIVATE /usr/lib/librknnrt.so)
-        message(STATUS "RKNN: path /usr/include/rknn_api.h")
-    else()
-        # 手动指定 RKNN 库路径
-        set(RKNN_LIB_DIR "${CMAKE_SOURCE_DIR}/third_lib/librknn_api" CACHE PATH "RKNN lib path")
-        target_include_directories(${PROJECT_NAME} PRIVATE "${RKNN_LIB_DIR}/include")
-        target_link_libraries(${PROJECT_NAME} PRIVATE "${RKNN_LIB_DIR}/aarch64/librknnrt.so")
-        message(STATUS "RKNN: manual path ${RKNN_LIB_DIR}")
-    endif()
-endif()
+# if(IS_RK3568)
+# 手动指定 RKNN 库路径
+set(RKNN_LIB_DIR "${CMAKE_SOURCE_DIR}/${RKNN_PATH}" CACHE PATH "RKNN lib path")
+target_include_directories(${PROJECT_NAME} PRIVATE "${RKNN_LIB_DIR}/include")
+target_link_libraries(${PROJECT_NAME} PRIVATE "${RKNN_LIB_DIR}/aarch64/librknnrt.so")
+message(STATUS "RKNN: manual path ${RKNN_LIB_DIR}")
+# endif()
 
 # --- RGA（Rockchip Graphics API，仅 aarch64） ---
 # RGA 是 Rockchip 的 2D 硬件加速引擎
 # 可用于 NV12→RGB 零拷贝转换（比 CPU NEON 更快）
 # 如果未找到，降级使用 CPU 转换（bridge.cpp 中的 OpenCV cvtColor）
-if(IS_RK3568)
-    find_library(RGA_LIBRARY NAMES rga librga
-        PATHS /usr/lib /usr/lib/aarch64-linux-gnu
-        ${CMAKE_SOURCE_DIR}/third_lib/rga/lib)
-    find_path(RGA_INCLUDE_DIR NAMES rga.h im2d.h
-        PATHS /usr/include/rga
-        ${CMAKE_SOURCE_DIR}/third_lib/rga/include)
-    if(RGA_LIBRARY AND RGA_INCLUDE_DIR)
-        target_include_directories(${PROJECT_NAME} PRIVATE ${RGA_INCLUDE_DIR})
-        target_link_libraries(${PROJECT_NAME} PRIVATE ${RGA_LIBRARY})
-        target_compile_definitions(${PROJECT_NAME} PRIVATE HAVE_RGA)
-        message(STATUS "RGA: ${RGA_LIBRARY}")
-    else()
-        message(STATUS "RGA: not found, fallback to CPU resize")
-        message(STATUS "RGA: not found, fallback to CPU resize")
-    endif()
+message(STATUS "=========================================================")
+find_library(RGA_LIBRARY NAMES rga librga
+    PATHS ${CMAKE_SOURCE_DIR}/${RGA_PATH}/lib /usr/lib /usr/lib/aarch64-linux-gnu)
+find_path(RGA_INCLUDE_DIR NAMES rga.h im2d.h 
+    PATHS ${CMAKE_SOURCE_DIR}/${RGA_PATH}/include /usr/include/rga)
+if(RGA_LIBRARY AND RGA_INCLUDE_DIR)
+    target_include_directories(${PROJECT_NAME} PRIVATE ${RGA_INCLUDE_DIR})
+    target_link_libraries(${PROJECT_NAME} PRIVATE ${RGA_LIBRARY})
+    target_compile_definitions(${PROJECT_NAME} PRIVATE HAVE_RGA)
+    message(STATUS "RGA: ${RGA_LIBRARY}")
+else()
+    message(STATUS "RGA: not found, fallback to CPU resize")
 endif()
 
 # --- FFmpeg ---
@@ -236,8 +210,8 @@ endif()
 # INSTALL_RPATH：安装后使用的搜索路径
 if(IS_RK3568)
     set_target_properties(${PROJECT_NAME} PROPERTIES
-        BUILD_RPATH   "$ORIGIN/../third_lib/opencv/lib:$ORIGIN/../third_lib/librknn_api/aarch64"
-        INSTALL_RPATH "$ORIGIN/../third_lib/opencv/lib:$ORIGIN/../third_lib/librknn_api/aarch64"
+        BUILD_RPATH   "$ORIGIN/../${OPENCV_PATH}/lib:$ORIGIN/../${RKNN_PATH}/aarch64"
+        INSTALL_RPATH "$ORIGIN/../${OPENCV_PATH}/lib:$ORIGIN/../${RKNN_PATH}/aarch64"
     )
 endif()
 
