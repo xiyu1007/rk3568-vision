@@ -30,10 +30,10 @@
 
 ```bash
 cd /home/gx/project/gx/rk3568-vision
-make            # 生成 build/rk3568_vision
+make            # 生成 output/rk3568_vision
 ```
 
-看到 `==> 构建完成: build/rk3568_vision` 即成功。
+看到 `==> 构建完成: output/rk3568_vision` 即成功。
 
 > 依赖：`build-essential`、`pkg-config`、FFmpeg 开发库（libavcodec/format/util/swscale）；
 > RKNN 运行时在 `third_lib/librknn_api/`（`./scripts/fetch_deps.sh` 拉取）。
@@ -64,7 +64,7 @@ cd tmp && ./mediamtx &       # 后台启动，默认监听 1935（配置 tmp/med
 
 ```bash
 cd /home/gx/project/gx/rk3568-vision
-./build/rk3568_vision -c conf/test_mp4.yaml
+./output/rk3568_vision -c conf/test_mp4.yaml
 ```
 
 > 程序会一直跑（mp4 循环播放），按 `Ctrl+C` 停止。
@@ -124,7 +124,8 @@ v4l2-ctl --list-devices        # 应看到 rkisp_mainpath 下的 /dev/video0
 
 ```bash
 cd /home/gx/project/gx/rk3568-vision
-./build/rk3568_vision -c conf/default.yaml -d /dev/video0 -W 1280 -H 720 -f 25
+./output/rk3568_vision -c conf/default.yaml -d /dev/video0 -W 720 -H 480 -f 25
+# ./output/rk3568_vision -c conf/default.yaml -d /dev/video0 -W 1280 -H 720 -f 25
 ```
 
 > `conf/default.yaml` 的 `capture.source` 默认就是 `v4l2`，分辨率 1280x720@25fps。
@@ -152,10 +153,10 @@ cd /home/gx/project/gx/rk3568-vision
 
 ```bash
 # mp4 输入
-./build/rk3568_vision -c conf/test_mp4.yaml --no-stream --record output/test.mp4
+./output/rk3568_vision -c conf/test_mp4.yaml --no-stream --record output/test.mp4
 
 # 摄像头输入
-./build/rk3568_vision -c conf/default.yaml --no-stream --record output/test.mp4
+./output/rk3568_vision -c conf/default.yaml --no-stream --record output/test.mp4
 ```
 
 录制一段时间后 `Ctrl+C` 停止，检查文件：

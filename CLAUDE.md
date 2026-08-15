@@ -52,4 +52,14 @@ RKNN 运行时放 `third_lib/librknn_api/`（不入库，`fetch_deps.sh` 拉取�
   否则音频时间戳滞后，mediamtx 转发时只发 FLV 头、不转发视频帧（同样表现为拉流 0 帧）
 - Makefile 规则 `build/%.o: src/%.cpp` 不跟踪头文件依赖，改 `include/*.hpp` 后必须
   `make clean` 全量重编，否则新旧 .o 布局不一致会导致段错误
-- 实测单帧推理链路约 97ms，瓶颈在前置处理 NV12→RGB 的 CPU 浮点运算（可后续用 RGA 加速）
+- 前处理已用 RGA 硬件加速（`inferencer.cpp` 用 im2d 的 `imresize` 做 NV12→RGB 转换+缩放），
+  从 ~50ms 降到 ~3ms；当前推理链路 pre≈3ms + rknn≈45ms + post≈20ms ≈ 68ms（约 15fps）
+- 模型可选：`model/yolov5s_relu.rknn`（relu 激活，NPU 更快，默认）或 `model/yolov5s.rknn`（标准 silu）。
+  两者后处理差异在 sigmoid：relu 版输出已是 sigmoid 后的值、标准版是 logits。由配置
+  `inference.use_sigmoid` 决定（relu=`false`、标准=`true`），`inferencer.cpp` 按此切换，
+  换模型时务必同步改该配置，否则阈值失效导致候选暴增、后处理慢到 2 秒/帧
+- `librknnrt.so` 已升级到 **2.3.2**（系统 `/lib` 和 `third_lib/` 都是；旧 1.5.0 备份在
+  `/lib/librknnrt.so.bak`）。板端 NPU 内核驱动是 rknpu 0.8.2（2022 旧版），只兼容 rknn-toolkit2
+  1.4/1.5 转换的模型，故 2.x 转换的模型必须配 2.x 运行时才能加载（否则 rknn_init 报 -6）
+- 转模型用 rknn-toolkit2 2.3.2（已装在 ubuntu 虚拟机，Python 3.12 + onnx 1.16.1），脚本见
+  rknn_model_zoo `examples/yolov5`；目标平台 `rk3568`、量化 `i8`（量化集 coco_subset_20）

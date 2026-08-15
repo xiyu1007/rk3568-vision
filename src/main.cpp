@@ -118,6 +118,7 @@ bool loadConfig(const std::string& path, Config& cfg) {
     tryGet(kv, "inference.model_width",    cfg.inference.model_width);
     tryGet(kv, "inference.model_height",   cfg.inference.model_height);
     tryGet(kv, "inference.npu_core",       cfg.inference.npu_core);
+    tryGet(kv, "inference.use_sigmoid",    cfg.inference.use_sigmoid);
 
     tryGet(kv, "pacer.target_fps",      cfg.pacer.target_fps);
     tryGet(kv, "pacer.allow_duplicate", cfg.pacer.allow_duplicate);

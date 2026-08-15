@@ -268,7 +268,11 @@ bool Inferencer::detect(const FramePtr& frame) {
                     const int idx = gy * t.w + gx;
                     const int off = base * glen + idx;   // NCHW 数据基偏移
 
-                    float obj = sigmoid(t.data[off + 4 * glen]);
+                    // 标准 yolov5s 输出是 logits，需 sigmoid；relu 版输出已是 sigmoid 后的值，
+                    // 按配置 use_sigmoid 决定是否再 sigmoid（relu 版若再 sigmoid，obj 会全部
+                    // 接近 0.5~1、阈值失效导致候选暴增、后处理极慢）。
+                    float obj = t.data[off + 4 * glen];
+                    if (cfg_.use_sigmoid) obj = sigmoid(obj);
                     if (obj < cfg_.conf_threshold) continue;
 
                     int   max_cls = 0;
@@ -277,13 +281,20 @@ bool Inferencer::detect(const FramePtr& frame) {
                         float v = t.data[off + (5 + c) * glen];
                         if (v > max_val) { max_val = v; max_cls = c; }
                     }
-                    float score = obj * sigmoid(max_val);
+                    if (cfg_.use_sigmoid) max_val = sigmoid(max_val);
+                    float score = obj * max_val;
                     if (score < cfg_.conf_threshold) continue;
 
-                    float tx = sigmoid(t.data[off + 0 * glen]);
-                    float ty = sigmoid(t.data[off + 1 * glen]);
-                    float tw = sigmoid(t.data[off + 2 * glen]);
-                    float th = sigmoid(t.data[off + 3 * glen]);
+                    float tx = t.data[off + 0 * glen];
+                    float ty = t.data[off + 1 * glen];
+                    float tw = t.data[off + 2 * glen];
+                    float th = t.data[off + 3 * glen];
+                    if (cfg_.use_sigmoid) {
+                        tx = sigmoid(tx);
+                        ty = sigmoid(ty);
+                        tw = sigmoid(tw);
+                        th = sigmoid(th);
+                    }
                     float bx = (tx * 2.0f - 0.5f + gx) * t.stride;
                     float by = (ty * 2.0f - 0.5f + gy) * t.stride;
                     float bw = std::pow(tw * 2.0f, 2) * kAnchors[anchor_row][2 * a];
@@ -335,9 +346,9 @@ bool Inferencer::detect(const FramePtr& frame) {
     uint64_t t3 = nowUs();
     static int dbg = 0;
     if (++dbg % 25 == 0)
-        LOG_INFO("detect: pre=%llu rknn=%llu post=%llu us",
-                 (unsigned long long)(t1 - t0), (unsigned long long)(t2 - t1),
-                 (unsigned long long)(t3 - t2));
+        LOG_DEBUG("detect: pre=%llu rknn=%llu post=%llu us boxes=%u",
+                  (unsigned long long)(t1 - t0), (unsigned long long)(t2 - t1),
+                  (unsigned long long)(t3 - t2), result.count);
 
     rknn_outputs_release(ctx_, n_outputs_, outputs.data());
     return true;

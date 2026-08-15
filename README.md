@@ -271,7 +271,7 @@ make clean      # 清理
 
 | 平台              | 行为                                                                          |
 | ----------------- | ----------------------------------------------------------------------------- |
-| aarch64（RK3568） | 链接`librknnrt.so`，生成 `build/rk3568_vision`（真实 NPU 推理 + libx264） |
+| aarch64（RK3568） | 链接`librknnrt.so`，生成 `output/rk3568_vision`（真实 NPU 推理 + libx264） |
 | x86_64（开发机）  | 仅编译到`.o` 做语法检查（不链接/不运行，真实推理需板端 NPU）                |
 
 ---
@@ -286,13 +286,13 @@ make clean      # 清理
 ```bash
 cd /home/gx/project/gx/rk3568-vision
 make
-./build/rk3568_vision -c conf/default.yaml -d /dev/video0
+./output/rk3568_vision -c conf/default.yaml -d /dev/video0
 ```
 
 ### 8.2 板端：mp4 文件输入（无摄像头联调）
 
 ```bash
-./build/rk3568_vision -c conf/test_mp4.yaml
+./output/rk3568_vision -c conf/test_mp4.yaml
 ```
 
 ### 8.3 RTMP 拉流验证
@@ -311,22 +311,23 @@ ffprobe -v error -show_entries stream=codec_name,width,height \
 
 ## 9. 性能与延迟分析
 
-### 9.1 延迟分解（估算）
+### 9.1 延迟分解（实测，640x480 摄像头 + yolov5s_relu + RGA）
 
 | 阶段               | 延迟                | 说明                       |
 | ------------------ | ------------------- | -------------------------- |
-| 采集（DQBUF+拷贝） | ~1ms                | mmap 零拷贝 + 一次必要拷贝 |
-| 稳帧缓冲           | 0~40ms              | 1 帧 @25fps 缓冲           |
-| 推理（NPU）        | ~25ms               | 主要瓶颈                   |
-| 编码               | ~5ms                | 软编；硬编 <2ms            |
-| 推流封装           | ~1ms                | FLV + TCP                  |
-| **端到端**   | **~40~70ms** | < 100ms 目标 ✅            |
+| 采集（DQBUF+拷贝） | ~60-76ms            | V4L2 poll 等待 + mmap 拷贝 |
+| 前处理（RGA）      | ~2-3ms              | RGA 硬件 NV12→RGB（原 CPU ~50ms） |
+| 推理（NPU）        | ~43-53ms            | yolov5s_relu（原 yolov5s ~57ms） |
+| 后处理（解码+NMS） | ~19-21ms            | CPU 解码 + NMS             |
+| 编码               | ~29-45ms            | libx264 软编               |
+| **实际帧率**       | **~15fps**          | 瓶颈在 NPU 推理 ~45ms      |
 
 ### 9.2 关键优化
 
 - V4L2 mmap 零拷贝
+- **RGA 硬件加速 NV12→RGB 前处理**（CPU 浮点 → RGA 2D 加速器，50ms→3ms）
+- **yolov5s_relu 模型**（relu 激活，NPU 更快）+ INT8 量化
 - 稳帧器保证输出码率稳定
-- NPU 硬件加速 + INT8 量化
 - 零 B 帧编码降低延迟
 - 有界队列 + 丢最旧，避免延迟累积
 - 独立推流/录制线程隔离网络与磁盘阻塞

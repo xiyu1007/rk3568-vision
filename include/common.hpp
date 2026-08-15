@@ -115,6 +115,7 @@ struct InferenceConfig {
     float       nms_threshold  = 0.45f;
     uint32_t    model_width    = 640, model_height = 640;
     uint32_t    npu_core       = 0;        // RK3568 固定 0
+    bool        use_sigmoid    = true;     // 后处理是否 sigmoid：标准 yolov5s=true，relu 版=false
 };
 
 struct PacerConfig {

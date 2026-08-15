@@ -1,5 +1,5 @@
 # ============================================================================
-# RK3568 视觉流水线默认配置
+# RK3568 视觉流水线默认配置（真实摄像头输入）
 # ============================================================================
 
 # 视频采集：source=v4l2(摄像头) / mp4(视频文件)
@@ -7,22 +7,23 @@ capture:
   source: v4l2
   device: /dev/video0
   file: data/test.mp4
-  width: 640
-  height: 480
+  width: 1280
+  height: 720
   fps: 25
   buffer_count: 6
   use_mplane: true
 
-# RKNN 推理（YOLOv5s INT8）
+# RKNN 推理（YOLOv5 relu 版 INT8，输出已是 sigmoid 后值，后处理不再 sigmoid）
 inference:
   enabled: true
-  model_path: model/yolov5s.rknn
+  model_path: model/yolov5s_relu.rknn
   labels_path: model/coco_80_labels_list.txt
   conf_threshold: 0.25
   nms_threshold: 0.45
   model_width: 640
   model_height: 640
   npu_core: 0
+  use_sigmoid: false    # relu 模型输出已是 sigmoid 后值；换标准 yolov5s 时改为 true
 
 # 稳帧器（帧率稳定节拍）
 pacer:
@@ -30,8 +31,8 @@ pacer:
   allow_duplicate: true
 
 # 编码：hardware=true 需 Rockchip FFmpeg 分支(h264_rkmpp)；当前板端用软编
-# 注：实际帧率受推理/编码瓶颈影响（mp4 约 10fps、摄像头约 4fps），gop_size 不宜
-# 太大，否则关键帧间隔过长，拉流端迟迟等不到 IDR 出画面。设 10 保证关键帧 ≤2.5 秒
+# 注：实际帧率受推理/编码瓶颈影响（约 10~15fps），gop_size 不宜太大，否则关键帧
+# 间隔过长，拉流端迟迟等不到 IDR 出画面。设 10 保证关键帧 ≤2.5 秒
 encode:
   hardware: false
   bitrate: 2000000
@@ -39,7 +40,7 @@ encode:
   preset: fast
   profile: high
 
-# RTMP 推流（mediamtx 部署在板端，流水线推流到板端本机 1935）
+# RTMP 推流（mediamtx 部署在板端 tmp/，流水线推流到板端本机 1935）
 stream:
   enabled: true
   url: rtmp://127.0.0.1:1935/live/stream
