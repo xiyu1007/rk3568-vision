@@ -188,7 +188,7 @@ ffprobe -v error -show_entries stream=codec_name,width,height -of default=noprin
 3. **`v4l2: open /dev/video0 failed`** —— 摄像头未检测到，先 `v4l2-ctl --list-devices` 确认，检查排线/供电。
 4. **mediamtx 拉流只有流信息、0 视频帧** —— mediamtx v1.9.3 不转发「纯视频、无音频」的 RTMP 流
    （ffmpeg `-c:v libx264 -an` 推流同样复现：拉流端 0 帧）。本项目已在 FLV 中自动补一路静音 AAC 音轨
-   （encoder.cpp 硬编码静音帧实现），无需手动处理；也可升级 mediamtx 到修复该问题的版本。
+   （muxer.cpp 硬编码静音帧实现），无需手动处理；也可升级 mediamtx 到修复该问题的版本。
 5. **改 `include/*.hpp` 后程序莫名段错误** —— Makefile 规则 `build/%.o: src/%.cpp` 不跟踪头文件依赖，
    改头文件后必须 `make clean` 全量重编，否则新旧 `.o` 布局不一致会段错误。
 6. **拉流长时间 0 帧，但板端 `push=N` 正常增长、日志含 `silent AAC track added`** —— 静音音轨时间戳

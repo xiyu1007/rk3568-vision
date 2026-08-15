@@ -90,13 +90,13 @@ RTMP 推流，端到端延迟控制在 100ms 以内。
 
 | 模块     | 文件                    | 职责                                            |
 | -------- | ----------------------- | ----------------------------------------------- |
-| 公共类型 | `common.hpp`          | 全部类型 + 配置结构体（Frame/DetectBox/Config） |
-| 环形缓冲 | `ring_buffer.hpp`     | 有界环形缓冲 + 条件变量（线程通信核心）         |
-| 日志     | `logger.hpp/.cpp`     | 分级异步日志 + 文件轮转                         |
-| 采集     | `capture.hpp/.cpp`    | V4L2 mmap 采集 / mp4 文件解码（NV12）           |
-| 推理     | `inferencer.hpp/.cpp` | RKNN 推理 + YOLOv5 前后处理 + NV12 画框         |
-| 编码推流 | `encoder.hpp/.cpp`    | H.264 编/解码 + FLV(RTMP)/MP4 封装              |
-| 流水线   | `pipeline.hpp/.cpp`   | 线程编排 + 稳帧器 + 监控 + 性能统计             |
+| 类型/配置/调试 | `types/config/debug.hpp` | Frame（dmabuf 双来源）、配置、DEBUG 宏     |
+| 采集     | `camera_source.*`     | V4L2 dmabuf 零拷贝 / mp4 解码，回调解耦          |
+| 推理     | `inferencer.*`        | RGA 前处理 + RKNN 推理 + 后处理 + NV12 画框      |
+| 编码     | `h264_encoder.*`      | H.264 硬编(h264_rkmpp)/软编(libx264)            |
+| 封装/推流/录制 | `muxer.*` `rtmp_streamer.*` `mp4_recorder.*` | FLV/MP4、RTMP（静音AAC）、MP4 录制 |
+| 协调器   | `pipeline.*`          | 组合模块、回调解耦、队列、线程编排、监控        |
+| 基础设施 | `logger.*` `ring_buffer.hpp` | 日志、有界环形缓冲                       |
 
 ---
 
@@ -343,16 +343,21 @@ rk3568-vision/
 ├── conf/
 │   ├── default.yaml          # 默认配置（摄像头输入）
 │   └── test_mp4.yaml         # mp4 输入测试配置（无摄像头联调）
-├── include/
-│   ├── common.hpp            # 公共类型 + 配置结构体
-│   ├── ring_buffer.hpp       # 环形缓冲
+├── include/vision/           # 头文件（namespace vision）
+│   ├── types.hpp             # 核心类型（Frame dmabuf 双来源、DetectResult）
+│   ├── config.hpp            # 配置结构体
+│   ├── debug.hpp             # DEBUG 条件编译宏
+│   ├── camera_source.hpp     # 采集（V4L2 零拷贝/mp4，回调解耦）
+│   ├── inferencer.hpp        # 推理（RGA + RKNN + 后处理 + 画框）
+│   ├── h264_encoder.hpp      # H264 编码
+│   ├── muxer.hpp             # FLV/MP4 封装
+│   ├── rtmp_streamer.hpp     # RTMP 推流（静音 AAC）
+│   ├── mp4_recorder.hpp      # MP4 录制
+│   ├── pipeline.hpp          # 协调器（组合模块、队列、线程）
 │   ├── logger.hpp            # 日志
-│   ├── capture.hpp           # 采集（V4L2/mp4）
-│   ├── inferencer.hpp        # 推理（RKNN + YOLOv5 + 画框）
-│   ├── encoder.hpp           # 编码推流（H264 + FLV/MP4）
-│   └── pipeline.hpp          # 流水线编排（线程 + 稳帧 + 监控）
-├── src/                      # 对应 .cpp + main.cpp
-├── model/                    # yolov5s.rknn + coco_80_labels_list.txt
+│   └── ring_buffer.hpp       # 环形缓冲
+├── src/                      # 对应 .cpp + main.cpp + config.cpp
+├── model/                    # yolov5s_relu.rknn + yolov5s.rknn + coco_80_labels_list.txt
 ├── third_lib/                # 依赖（不入库，fetch_deps.sh 拉取）
 │   └── librknn_api/          #   librknnrt.so + rknn_api.h
 └── scripts/                  # fetch_deps.sh / nginx-rtmp.conf / verify_rtmp.sh

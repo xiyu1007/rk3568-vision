@@ -5,8 +5,9 @@
 ## 构建与运行
 
 ```bash
-make            # 板端(aarch64)：链接 librknnrt.so 生成可执行文件；x86：仅编译检查
-make clean      # 清理
+make            # release：-O2 优化，生成 output/rk3568_vision
+make debug      # debug：-DVISION_DEBUG -g -O0，性能分析/队列深度/详细日志
+make clean      # 清理 build/ 与 output/
 ./scripts/fetch_deps.sh   # 拉取 RKNN 依赖（rknn_api.h + librknnrt.so）
 ```
 
@@ -15,12 +16,23 @@ make clean      # 清理
 ## 架构
 
 纯 C++17（`namespace vision`），一条 V4L2 采集 → 稳帧 → RKNN 推理 → H.264 编码 →
-RTMP 推流 / MP4 录制的多线程流水线。共 7 个模块（`common/ring_buffer/logger/capture/inferencer/encoder/pipeline`）。
+RTMP 推流 / MP4 录制的多线程流水线。头文件在 `include/vision/`，源文件在 `src/`。
+模块划分借鉴 around_view_app（分层 + 回调解耦），协调器只协调不承载具体逻辑。
 
-- **采集** `capture.cpp`：`source=v4l2`(摄像头) / `source=mp4`(视频文件) 二选一
-- **推理** `inferencer.cpp`：真实 RKNN + YOLOv5 前后处理 + NV12 画框（无 mock）
-- **编码** `encoder.cpp`：H264 硬编(h264_rkmpp)/软编(libx264) + FLV/MP4 封装
-- **流水线** `pipeline.cpp`：线程编排 + 稳帧器 + 监控 + 性能统计
+| 模块 | 文件 | 职责 |
+|------|------|------|
+| 类型/配置/调试 | `types.hpp` `config.hpp` `debug.hpp` | Frame（dmabuf 双来源）、配置、DEBUG 宏 |
+| 采集 | `camera_source.*` | V4L2 dmabuf 零拷贝 / mp4 解码，回调解耦 |
+| 推理 | `inferencer.*` | RGA 前处理 + RKNN 推理 + YOLOv5 后处理 + 画框 |
+| 编码 | `h264_encoder.*` | H264 硬编/软编 |
+| 封装/推流/录制 | `muxer.*` `rtmp_streamer.*` `mp4_recorder.*` | FLV/MP4 封装、RTMP 推流（静音 AAC）、MP4 录制 |
+| 协调器 | `pipeline.*` | 组合模块、回调解耦、队列、线程编排、监控 |
+| 基础设施 | `logger.*` `ring_buffer.hpp` | 日志、有界环形缓冲 |
+
+- **回调解耦**：`CameraSource::RegisterFrameCallback` 注册回调，采集线程回调里只入队，
+  不做重活（推理/编码在协调器里）
+- **零拷贝**：V4L2 mmap + EXPBUF 导出 dmabuf fd，采集不 memcpy，Frame 引用 mmap 地址，
+  shared_ptr 自定义 deleter 引用归零时 QBUF 归还 buffer
 - **线程通信**：有界环形缓冲 + 条件变量（`ring_buffer.hpp`），生产者-消费者，满则丢最旧
 - **配置**：`conf/default.yaml`（自研 YAML 解析器，零第三方依赖），命令行可覆盖
 
@@ -46,14 +58,14 @@ RKNN 运行时放 `third_lib/librknn_api/`（不入库，`fetch_deps.sh` 拉取�
 - 板端 FFmpeg 无 h264_rkmpp，当前用 libx264 软编；硬件编码需 Rockchip FFmpeg 分支
 - 板端 IMX415 传感器已检测到，`/dev/video0` 1280x720@25fps 采集正常
 - mediamtx v1.9.3 不转发「纯视频、无音频」的 RTMP 流（拉流端 0 帧），须在 FLV 补一路
-  静音 AAC 轨；encoder.cpp 用 ffmpeg CLI 预生成的静音帧硬编码实现（板端原生 AAC 编码器
+  静音 AAC 轨；`muxer.cpp` 用 ffmpeg CLI 预生成的静音帧硬编码实现（板端原生 AAC 编码器
   版本错配会段错误，勿改回 avcodec 编码方式）
-- 静音 AAC 轨的时间戳必须跟随视频时间戳对齐（writeSilentAudio 按视频 pts 换算采样数写足帧），
+- 静音 AAC 轨的时间戳必须跟随视频时间戳对齐（`WriteSilentAudio` 按视频 pts 换算采样数写足帧），
   否则音频时间戳滞后，mediamtx 转发时只发 FLV 头、不转发视频帧（同样表现为拉流 0 帧）
-- Makefile 规则 `build/%.o: src/%.cpp` 不跟踪头文件依赖，改 `include/*.hpp` 后必须
+- Makefile 规则 `build/%.o: src/%.cpp` 不跟踪头文件依赖，改 `include/vision/*.hpp` 后必须
   `make clean` 全量重编，否则新旧 .o 布局不一致会导致段错误
 - 前处理已用 RGA 硬件加速（`inferencer.cpp` 用 im2d 的 `imresize` 做 NV12→RGB 转换+缩放），
-  从 ~50ms 降到 ~3ms；当前推理链路 pre≈3ms + rknn≈45ms + post≈20ms ≈ 68ms（约 15fps）
+  从 ~50ms 降到 ~3ms；注意 `wrapbuffer_virtualaddr` 参数顺序是 va,width,height,format,wstride,hstride
 - 模型可选：`model/yolov5s_relu.rknn`（relu 激活，NPU 更快，默认）或 `model/yolov5s.rknn`（标准 silu）。
   两者后处理差异在 sigmoid：relu 版输出已是 sigmoid 后的值、标准版是 logits。由配置
   `inference.use_sigmoid` 决定（relu=`false`、标准=`true`），`inferencer.cpp` 按此切换，
