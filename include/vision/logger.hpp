@@ -28,7 +28,7 @@
 #include <string>
 #include <thread>
 
-#include "common.hpp"   // 使用 LogConfig
+#include "vision/config.hpp"   // 使用 LogConfig
 
 namespace vision {
 

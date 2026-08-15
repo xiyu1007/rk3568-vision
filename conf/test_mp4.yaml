@@ -17,14 +17,14 @@ capture:
   height: 720
   fps: 25
   buffer_count: 6
-  use_mplane: true
+  use_multi_planar: true
 
 # RKNN 推理（YOLOv5 relu 版 INT8，输出已是 sigmoid 后值，后处理不再 sigmoid）
 inference:
   enabled: true
   model_path: model/yolov5s_relu.rknn
   labels_path: model/coco_80_labels_list.txt
-  conf_threshold: 0.25
+  confidence_threshold: 0.25
   nms_threshold: 0.45
   model_width: 640
   model_height: 640

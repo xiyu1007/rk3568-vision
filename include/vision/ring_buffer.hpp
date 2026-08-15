@@ -51,7 +51,7 @@ public:
     // 队列满时丢弃队首最旧元素，再写入新元素，并累计 dropped_ 计数。
     // 这样做的原因：在实时视频流水线中，旧帧的价值远低于新帧，
     // 宁可丢旧帧，也不让延迟越积越长。
-    void push(T item) {
+    	void Push(T item) {
         std::lock_guard<std::mutex> lock(mutex_);
         if (size_ == capacity_) {
             // 队列已满：丢弃最旧元素（head 前移）
@@ -69,7 +69,7 @@ public:
     // pop — 消费者阻塞取出（队列空时休眠，直到有数据或 close）
     // ----------------------------------------------------------------------
     // 返回 false 表示队列已被 close（流水线关闭），调用方应据此退出线程。
-    bool pop(T& out) {
+    	bool Pop(T& out) {
         std::unique_lock<std::mutex> lock(mutex_);
         // wait：当 size_>0 或 closed_ 成立时返回，否则释放锁休眠
         not_empty_.wait(lock, [this] { return size_ > 0 || closed_; });
@@ -88,7 +88,7 @@ public:
     // 返回值：
     //   true  —— 取到了元素
     //   false —— 超时（timeout 内没有数据）或队列已关闭
-    bool popFor(T& out, std::chrono::milliseconds timeout) {
+    	bool PopFor(T& out, std::chrono::milliseconds timeout) {
         std::unique_lock<std::mutex> lock(mutex_);
         if (!not_empty_.wait_for(lock, timeout,
                                  [this] { return size_ > 0 || closed_; })) {
@@ -106,20 +106,20 @@ public:
     // ----------------------------------------------------------------------
     // close — 关闭队列，唤醒所有阻塞的消费者
     // ----------------------------------------------------------------------
-    void close() {
+    	void Close() {
         std::lock_guard<std::mutex> lock(mutex_);
         closed_ = true;
         not_empty_.notify_all();
     }
 
     // 当前元素个数（调试/监控用）。
-    size_t size() const {
+    	size_t Size() const {
         std::lock_guard<std::mutex> lock(mutex_);
         return size_;
     }
 
     // 累计被丢弃（丢最旧）的元素个数（性能统计用）。
-    uint64_t dropped() const {
+    	uint64_t Dropped() const {
         std::lock_guard<std::mutex> lock(mutex_);
         return dropped_;
     }
