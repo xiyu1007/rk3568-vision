@@ -40,6 +40,8 @@ public:
 private:
     // 前处理：NV12 → RGB(letterbox)
     void preprocess(const FramePtr& f, uint8_t* rgb, LetterboxInfo& lb);
+    // RGA 硬件 NV12 → RGB 格式转换 + 等比缩放，结果写入 rgb_tmp_，失败返回 false。
+    bool rgaPreprocess(const uint8_t* nv12, int w, int h, int sw, int sh);
     // 查询输出张量属性，初始化反量化缓冲
     bool queryOutputs();
 
@@ -50,7 +52,8 @@ private:
 
     std::vector<rknn_tensor_attr> out_attrs_;   // 输出张量属性（scale/zp）
     std::vector<size_t>           out_offsets_; // 各输出在反量化缓冲中的偏移
-    std::vector<uint8_t> rgb_buf_;              // 前处理 RGB 输入
+    std::vector<uint8_t> rgb_buf_;              // 前处理 RGB 输入（模型输入 640x640）
+    std::vector<uint8_t> rgb_tmp_;              // RGA 格式转换中间缓冲（采集分辨率 RGB）
     std::vector<float>   dequant_buf_;          // 反量化后的 float 输出
     std::vector<std::string> labels_;           // 类别标签
 

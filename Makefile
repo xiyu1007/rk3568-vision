@@ -16,7 +16,8 @@ ARCH := $(shell uname -m)
 CXX      := g++
 CXXFLAGS := -std=c++17 -Wall -Wextra -O2 -Iinclude -Ithird_lib/librknn_api/include
 FFMPEG   := $(shell pkg-config --cflags --libs libavcodec libavformat libavutil libswscale)
-LDFLAGS  := $(FFMPEG) -lpthread
+RGA      := $(shell pkg-config --libs librga)
+LDFLAGS  := $(FFMPEG) -lpthread $(RGA)
 
 SRCS   := $(wildcard src/*.cpp)
 OBJS   := $(patsubst src/%.cpp,build/%.o,$(SRCS))

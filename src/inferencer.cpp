@@ -12,6 +12,10 @@
 
 #include "logger.hpp"
 
+// RGA im2d 头文件自身通过 IM_API/IM_C_API 宏处理 C/C++ 兼容，勿再用 extern "C"
+// 包裹（否则会破坏内部 C++ 重载声明导致冲突）。
+#include <rga/im2d.h>
+
 namespace vision {
 
 // ===========================================================================
@@ -138,11 +142,10 @@ bool Inferencer::queryOutputs() {
 }
 
 // ===========================================================================
-//  前处理：NV12 → RGB letterbox
+//  前处理：NV12 → RGB letterbox（优先 RGA 硬件加速，失败回退 CPU 浮点）
 // ===========================================================================
 void Inferencer::preprocess(const FramePtr& f, uint8_t* rgb, LetterboxInfo& lb) {
     const int w = f->width, h = f->height;
-    const uint8_t* nv12 = f->nv12.data();
 
     float scale = std::min((float)model_w_ / w, (float)model_h_ / h);
     int sw = (int)(w * scale), sh = (int)(h * scale);
@@ -153,6 +156,18 @@ void Inferencer::preprocess(const FramePtr& f, uint8_t* rgb, LetterboxInfo& lb) 
     // 灰边填充（YOLOv5 惯例 114）。
     std::memset(rgb, 114, (size_t)model_w_ * model_h_ * 3);
 
+    // RGA 硬件：NV12 → RGB 转换 + 等比缩放，再把结果拷到 letterbox 位置。
+    if (rgaPreprocess(f->nv12.data(), w, h, sw, sh)) {
+        for (int r = 0; r < sh; ++r) {
+            std::memcpy(rgb + ((size_t)(r + lb.pad_y) * model_w_ + lb.pad_x) * 3,
+                        rgb_tmp_.data() + (size_t)r * sw * 3,
+                        (size_t)sw * 3);
+        }
+        return;
+    }
+
+    // 兜底：CPU 浮点转换（RGA 不可用时保证功能不坏）。
+    const uint8_t* nv12 = f->nv12.data();
     const uint8_t* y_plane  = nv12;
     const uint8_t* uv_plane = nv12 + (size_t)w * h;
 
@@ -164,7 +179,6 @@ void Inferencer::preprocess(const FramePtr& f, uint8_t* rgb, LetterboxInfo& lb) 
         for (int dx = 0; dx < sw; ++dx) {
             int sx = std::min((int)(dx / scale), w - 1);
             int yv = y_row[sx];
-            // uv_row 已指向 (sy/2) 行，这里只需列偏移（UV 交错，取偶数列）
             size_t uv_off = (sx & ~1);
             int uv = uv_row[uv_off], vv = uv_row[uv_off + 1];
             float yf = (yv - 16) * 1.164f;
@@ -176,15 +190,33 @@ void Inferencer::preprocess(const FramePtr& f, uint8_t* rgb, LetterboxInfo& lb) 
     }
 }
 
+// RGA 硬件做 NV12 → RGB 格式转换 + 等比缩放，结果写入 rgb_tmp_（sw x sh x 3）。
+bool Inferencer::rgaPreprocess(const uint8_t* nv12, int w, int h, int sw, int sh) {
+    if (rgb_tmp_.size() < (size_t)sw * sh * 3)
+        rgb_tmp_.resize((size_t)sw * sh * 3);
+
+    rga_buffer_t src = wrapbuffer_virtualaddr((void*)nv12, w, h, RK_FORMAT_YCbCr_420_SP);
+    rga_buffer_t dst = wrapbuffer_virtualaddr((void*)rgb_tmp_.data(), sw, sh, RK_FORMAT_RGB_888);
+    // fx=fy=0 表示按 dst/src 尺寸自动缩放；interpolation=0 用默认插值；sync=1 同步执行。
+    IM_STATUS st = imresize(src, dst);
+    if (st != IM_STATUS_SUCCESS) {
+        LOG_WARN("inferencer: RGA preprocess failed: %s", imStrError(st));
+        return false;
+    }
+    return true;
+}
+
 // ===========================================================================
 //  detect：完整推理
 // ===========================================================================
 bool Inferencer::detect(const FramePtr& frame) {
     if (!inited_ || !frame) return false;
+    uint64_t t0 = nowUs();
 
     // 1. 前处理。
     LetterboxInfo lb;
     preprocess(frame, rgb_buf_.data(), lb);
+    uint64_t t1 = nowUs();
 
     // 2. 设置输入 + 推理。
     rknn_input in{};
@@ -204,6 +236,7 @@ bool Inferencer::detect(const FramePtr& frame) {
     if (rknn_outputs_get(ctx_, n_outputs_, outputs.data(), nullptr) < 0) {
         LOG_ERROR("rknn: outputs_get failed"); return false;
     }
+    uint64_t t2 = nowUs();
 
     // 4. 反量化 → 构造输出头。
     std::vector<OutputTensor> tensors;
@@ -298,6 +331,13 @@ bool Inferencer::detect(const FramePtr& frame) {
 
     frame->detect = result;
     frame->inference_ts = nowUs();
+
+    uint64_t t3 = nowUs();
+    static int dbg = 0;
+    if (++dbg % 25 == 0)
+        LOG_INFO("detect: pre=%llu rknn=%llu post=%llu us",
+                 (unsigned long long)(t1 - t0), (unsigned long long)(t2 - t1),
+                 (unsigned long long)(t3 - t2));
 
     rknn_outputs_release(ctx_, n_outputs_, outputs.data());
     return true;
