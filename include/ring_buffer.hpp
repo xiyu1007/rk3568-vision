@@ -125,8 +125,8 @@ public:
     }
 
 private:
-    std::vector<T> buffer_;                 // 环形存储区
     size_t         capacity_;               // 容量（可容纳元素数）
+    std::vector<T> buffer_;                 // 环形存储区
     size_t         head_ = 0;               // 队首（读位置）
     size_t         tail_ = 0;               // 队尾（写位置）
     size_t         size_  = 0;              // 当前元素个数

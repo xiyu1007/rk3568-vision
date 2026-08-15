@@ -1,6 +1,6 @@
-# CLAUDE.md
+# AGENTS.md
 
-本文件为 Claude Code 在本仓库工作时提供指引。
+本文件为 Codex 在本仓库工作时提供指引。
 
 ## 构建与运行
 
@@ -38,18 +38,10 @@ RKNN 运行时放 `third_lib/librknn_api/`（不入库，`fetch_deps.sh` 拉取�
 
 - **rk3568 板端**：`ssh rk3568`，工作目录 `/home/gx/project/gx/rk3568-vision`
 - **ubuntu 虚拟机**：`ssh ubuntu`，仅做 x86 编译检查
-- **RTMP 服务器**：板端 mediamtx（项目 `tmp/` 下运行，`cd tmp && ./mediamtx`，监听 1935），非 nginx-rtmp
 - 测试顺序：先 mp4 输入（`source=mp4`）验证全链路，再切真实摄像头
 
 ## 注意事项
 
 - 板端 FFmpeg 无 h264_rkmpp，当前用 libx264 软编；硬件编码需 Rockchip FFmpeg 分支
-- 板端 IMX415 传感器已检测到，`/dev/video0` 1280x720@25fps 采集正常
-- mediamtx v1.9.3 不转发「纯视频、无音频」的 RTMP 流（拉流端 0 帧），须在 FLV 补一路
-  静音 AAC 轨；encoder.cpp 用 ffmpeg CLI 预生成的静音帧硬编码实现（板端原生 AAC 编码器
-  版本错配会段错误，勿改回 avcodec 编码方式）
-- 静音 AAC 轨的时间戳必须跟随视频时间戳对齐（writeSilentAudio 按视频 pts 换算采样数写足帧），
-  否则音频时间戳滞后，mediamtx 转发时只发 FLV 头、不转发视频帧（同样表现为拉流 0 帧）
-- Makefile 规则 `build/%.o: src/%.cpp` 不跟踪头文件依赖，改 `include/*.hpp` 后必须
-  `make clean` 全量重编，否则新旧 .o 布局不一致会导致段错误
+- 板端 IMX415 传感器目前 I2C 读回 0x000000（未检测到，排线/供电问题，非代码）
 - 实测单帧推理链路约 97ms，瓶颈在前置处理 NV12→RGB 的 CPU 浮点运算（可后续用 RGA 加速）

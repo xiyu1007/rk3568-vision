@@ -1,0 +1,65 @@
+# ============================================================================
+# RK3568 视觉流水线默认配置
+# ============================================================================
+
+# 视频采集：source=v4l2(摄像头) / mp4(视频文件)
+capture:
+  source: v4l2
+  device: /dev/video0
+  file: data/test.mp4
+  width: 640
+  height: 480
+  fps: 25
+  buffer_count: 6
+  use_mplane: true
+
+# RKNN 推理（YOLOv5s INT8）
+inference:
+  enabled: true
+  model_path: model/yolov5s.rknn
+  labels_path: model/coco_80_labels_list.txt
+  conf_threshold: 0.25
+  nms_threshold: 0.45
+  model_width: 640
+  model_height: 640
+  npu_core: 0
+
+# 稳帧器（帧率稳定节拍）
+pacer:
+  target_fps: 25
+  allow_duplicate: true
+
+# 编码：hardware=true 需 Rockchip FFmpeg 分支(h264_rkmpp)；当前板端用软编
+# 注：实际帧率受推理/编码瓶颈影响（mp4 约 10fps、摄像头约 4fps），gop_size 不宜
+# 太大，否则关键帧间隔过长，拉流端迟迟等不到 IDR 出画面。设 10 保证关键帧 ≤2.5 秒
+encode:
+  hardware: false
+  bitrate: 2000000
+  gop_size: 10
+  preset: fast
+  profile: high
+
+# RTMP 推流（mediamtx 部署在板端，流水线推流到板端本机 1935）
+stream:
+  enabled: true
+  url: rtmp://127.0.0.1:1935/live/stream
+  reconnect: true
+  reconnect_delay_ms: 2000
+  max_reconnect: -1
+
+# 本地 MP4 录制
+record:
+  enabled: false
+  path: output/record.mp4
+
+# 监控日志间隔（毫秒）
+monitor_interval_ms: 5000
+
+# 日志
+logging:
+  level: info
+  file: log/rk3568_vision.log
+  console: true
+  async: true
+  max_size: 10485760
+  backup_count: 3
