@@ -22,7 +22,7 @@ capture:
 # RKNN 推理（YOLOv5 relu 版 INT8，输出已是 sigmoid 后值，后处理不再 sigmoid）
 inference:
   enabled: true
-  model_path: model/yolov5s_relu.rknn
+  model_path: model/yolov5n.rknn
   labels_path: model/coco_80_labels_list.txt
   confidence_threshold: 0.25
   nms_threshold: 0.45
@@ -43,7 +43,7 @@ encode:
   hardware: false
   bitrate: 2000000
   gop_size: 10
-  preset: fast
+  preset: ultrafast
   profile: high
 
 # RTMP 推流（mediamtx 部署在板端，流水线推流到板端本机 1935）

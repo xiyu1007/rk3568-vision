@@ -37,7 +37,7 @@ encode:
   hardware: false
   bitrate: 2000000
   gop_size: 10
-  preset: fast
+  preset: ultrafast
   profile: high
 
 # RTMP 推流（mediamtx 部署在板端 tmp/，流水线推流到板端本机 1935）

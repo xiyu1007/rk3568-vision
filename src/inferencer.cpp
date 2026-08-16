@@ -14,6 +14,11 @@
 // 包裹（否则会破坏内部 C++ 重载声明导致冲突）。
 #include <rga/im2d.h>
 
+// ARM NEON SIMD（仅 aarch64，用于反量化加速）。
+#if defined(__aarch64__) || defined(__ARM_NEON)
+#include <arm_neon.h>
+#endif
+
 #include "vision/debug.hpp"
 #include "vision/logger.hpp"
 
@@ -294,10 +299,12 @@ bool Inferencer::Detect(const FramePtr& frame) {
         return false;
     }
     VISION_PROFILE_SCOPE("inference");
+    const TimestampUs detect_start_us = GetCurrentTimestampUs();
 
     // 1. 前处理。
     LetterboxInfo letterbox;
     Preprocess(frame, rgb_buffer_.data(), letterbox);
+    const TimestampUs preprocess_end_us = GetCurrentTimestampUs();
 
     // 2. 设置输入 + 推理。
     rknn_input input{};
@@ -326,6 +333,7 @@ bool Inferencer::Detect(const FramePtr& frame) {
         Logger::instance().error("rknn: outputs_get failed");
         return false;
     }
+    const TimestampUs rknn_end_us = GetCurrentTimestampUs();
 
     // 4. 反量化 → 构造输出头。
     std::vector<OutputTensor> tensors;
@@ -338,9 +346,42 @@ bool Inferencer::Detect(const FramePtr& frame) {
         for (uint32_t d = 0; d < attribute.n_dims; ++d) {
             elements *= attribute.dims[d];
         }
+        const float scale = attribute.scale;
+        const float zero_point = static_cast<float>(attribute.zp);
+#if defined(__aarch64__) || defined(__ARM_NEON)
+        // NEON SIMD 加速：16 个 int8 一次反量化（int8→int16→int32→float，再减 zp 乘 scale）。
+        const float32x4_t zero_point_v = vdupq_n_f32(zero_point);
+        const float32x4_t scale_v = vdupq_n_f32(scale);
+        int e = 0;
+        for (; e + 16 <= elements; e += 16) {
+            const int8x16_t v8 = vld1q_s8(src + e);
+            const int16x8_t v16_low = vmovl_s8(vget_low_s8(v8));
+            const int16x8_t v16_high = vmovl_s8(vget_high_s8(v8));
+            const int32x4_t v32_0 = vmovl_s16(vget_low_s16(v16_low));
+            const int32x4_t v32_1 = vmovl_s16(vget_high_s16(v16_low));
+            const int32x4_t v32_2 = vmovl_s16(vget_low_s16(v16_high));
+            const int32x4_t v32_3 = vmovl_s16(vget_high_s16(v16_high));
+            float32x4_t f0 = vcvtq_f32_s32(v32_0);
+            float32x4_t f1 = vcvtq_f32_s32(v32_1);
+            float32x4_t f2 = vcvtq_f32_s32(v32_2);
+            float32x4_t f3 = vcvtq_f32_s32(v32_3);
+            f0 = vmulq_f32(vsubq_f32(f0, zero_point_v), scale_v);
+            f1 = vmulq_f32(vsubq_f32(f1, zero_point_v), scale_v);
+            f2 = vmulq_f32(vsubq_f32(f2, zero_point_v), scale_v);
+            f3 = vmulq_f32(vsubq_f32(f3, zero_point_v), scale_v);
+            vst1q_f32(dst + e, f0);
+            vst1q_f32(dst + e + 4, f1);
+            vst1q_f32(dst + e + 8, f2);
+            vst1q_f32(dst + e + 12, f3);
+        }
+        for (; e < elements; ++e) {
+            dst[e] = Dequantize(src[e], attribute.zp, attribute.scale);
+        }
+#else
         for (int e = 0; e < elements; ++e) {
             dst[e] = Dequantize(src[e], attribute.zp, attribute.scale);
         }
+#endif
         const int grid_width  = attribute.dims[3];
         const int grid_height = attribute.dims[2];
         tensors.push_back({dst, grid_height, grid_width,
@@ -463,6 +504,11 @@ bool Inferencer::Detect(const FramePtr& frame) {
 
     frame->detection = result;
     frame->inference_timestamp = GetCurrentTimestampUs();
+
+    VISION_DEBUG_LOG("detect: pre=%llu rknn=%llu post=%llu us",
+                     static_cast<unsigned long long>(preprocess_end_us - detect_start_us),
+                     static_cast<unsigned long long>(rknn_end_us - preprocess_end_us),
+                     static_cast<unsigned long long>(frame->inference_timestamp - rknn_end_us));
 
     rknn_outputs_release(context_, output_count_, outputs.data());
     return true;
