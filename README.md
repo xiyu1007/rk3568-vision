@@ -341,8 +341,10 @@ rk3568-vision/
 ├── Makefile                  # 构建（平台自动判断：aarch64 链接 rknnrt，x86 仅编译）
 ├── README.md                 # 设计文档
 ├── conf/
-│   ├── default.yaml          # 默认配置（摄像头输入）
-│   └── test_mp4.yaml         # mp4 输入测试配置（无摄像头联调）
+│   ├── default.yaml          # 默认配置（摄像头检测输入）
+│   ├── test_mp4.yaml         # mp4 输入测试配置（无摄像头联调）
+│   ├── camera_push.yaml      # 摄像头纯推流配置（不推理，最低延迟）
+│   └── nginx-rtmp.conf       # nginx-rtmp 备选配置
 ├── include/vision/           # 头文件（namespace vision）
 │   ├── types.hpp             # 核心类型（Frame dmabuf 双来源、DetectResult）
 │   ├── config.hpp            # 配置结构体

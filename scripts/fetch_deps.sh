@@ -27,12 +27,36 @@ curl -fsSL --retry 3 -o "$RKNN_DIR/include/rknn_api.h" \
 [ -f "$RKNN_DIR/include/rknn_api.h" ] && echo "[OK] rknn_api.h ($(wc -l < "$RKNN_DIR/include/rknn_api.h") lines)"
 
 # ---------------------------------------------------------------------------
-# 2. librknnrt.so（aarch64 运行时，大文件，通常需手动放置）
+# 2. librknnrt.so（aarch64 运行时，2.3.2，从 GitHub raw 下载）
+#    注意：板端模型用 rknn-toolkit2 2.3.2 转换，需 2.x 运行时（旧 1.4/1.5 会加载失败 -6）
 # ---------------------------------------------------------------------------
 if [ -f "$RKNN_DIR/aarch64/librknnrt.so" ]; then
     echo "[OK] librknnrt.so present ($(du -h "$RKNN_DIR/aarch64/librknnrt.so" | cut -f1))"
 else
-    echo "[WARN] librknnrt.so not found，请从 rknpu2 SDK 拷贝到 $RKNN_DIR/aarch64/"
+    echo "fetching librknnrt.so (2.3.2) ..."
+    curl -fSL --retry 3 -o "$RKNN_DIR/aarch64/librknnrt.so" \
+        "https://raw.githubusercontent.com/airockchip/rknn-toolkit2/master/rknpu2/runtime/Linux/librknn_api/aarch64/librknnrt.so" \
+        || echo "[FAIL] 请手动放置 librknnrt.so 到 $RKNN_DIR/aarch64/"
+fi
+
+# ---------------------------------------------------------------------------
+# 3. mediamtx（RTMP 推流服务器，单二进制，来自 bluenviron/mediamtx）
+# ---------------------------------------------------------------------------
+MEDIAMTX_DIR="third_lib/mediamtx"
+MEDIAMTX_VERSION="v1.9.3"
+MEDIAMTX_TARBALL="/tmp/mediamtx_${MEDIAMTX_VERSION}.tar.gz"
+
+if [ -f "$MEDIAMTX_DIR/mediamtx" ]; then
+    echo "[OK] mediamtx present ($(du -h "$MEDIAMTX_DIR/mediamtx" | cut -f1))"
+else
+    echo "fetching mediamtx ${MEDIAMTX_VERSION} ..."
+    mkdir -p "$MEDIAMTX_DIR"
+    curl -fSL --retry 3 -o "$MEDIAMTX_TARBALL" \
+        "https://github.com/bluenviron/mediamtx/releases/download/${MEDIAMTX_VERSION}/mediamtx_${MEDIAMTX_VERSION}_linux_arm64v8.tar.gz" \
+        && tar -xzf "$MEDIAMTX_TARBALL" -C "$MEDIAMTX_DIR" \
+        && chmod +x "$MEDIAMTX_DIR/mediamtx" \
+        && rm -f "$MEDIAMTX_TARBALL" \
+        || echo "[FAIL] 请手动下载 mediamtx 到 $MEDIAMTX_DIR/"
 fi
 
 echo ""

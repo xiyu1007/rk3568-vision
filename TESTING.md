@@ -167,6 +167,22 @@ ffprobe -v error -show_entries stream=codec_name,width,height -of default=noprin
 
 ---
 
+## 4. 测试 D：摄像头纯推流（不推理）
+
+只想把摄像头画面直接推流、不做检测（最低延迟、最小 CPU）时，用 `conf/camera_push.yaml`
+（`inference.enabled: false`，跳过 RKNN 推理和画框）：
+
+```bash
+./scripts/start.sh -c conf/camera_push.yaml -d /dev/video0
+# 或
+./output/rk3568_vision -c conf/camera_push.yaml -d /dev/video0
+```
+
+**怎么算成功**：日志里**没有** `rknn: model input`（推理关闭），`monitor` 行 `inf=0ms`，
+拉流端能拿到摄像头画面（无检测框）。
+
+---
+
 ## 5. 验证命令速查
 
 | 目标         | 命令                                                                                           |

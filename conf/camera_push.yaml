@@ -1,0 +1,70 @@
+# ============================================================================
+# 摄像头纯推流配置（不推理、不画框，仅采集 → 编码 → RTMP 推流）
+#
+# 用法：./scripts/start.sh -c conf/camera_push.yaml -d /dev/video0
+#       或  ./output/rk3568_vision -c conf/camera_push.yaml -d /dev/video0
+#
+# 与 conf/default.yaml 的区别：inference.enabled=false，跳过 RKNN 推理，
+# 直接从摄像头采集 → H.264 编码 → RTMP 推流，延迟最低、CPU 占用最小。
+# ============================================================================
+
+# 视频采集：摄像头 V4L2
+capture:
+  source: v4l2
+  device: /dev/video0
+  file: data/test.mp4
+  width: 1280
+  height: 720
+  fps: 25
+  buffer_count: 6
+  use_multi_planar: true
+
+# 推理：关闭（纯推流，不检测、不画框）
+inference:
+  enabled: false
+  model_path: model/yolov5n.rknn
+  labels_path: model/coco_80_labels_list.txt
+  confidence_threshold: 0.25
+  nms_threshold: 0.45
+  model_width: 640
+  model_height: 640
+  npu_core: 0
+  use_sigmoid: false
+
+# 稳帧器
+pacer:
+  target_fps: 25
+  allow_duplicate: true
+
+# 编码：软编 ultrafast（纯推流场景追求低延迟）
+encode:
+  hardware: false
+  bitrate: 2000000
+  gop_size: 10
+  preset: ultrafast
+  profile: high
+
+# RTMP 推流（mediamtx 部署在板端 third_lib/mediamtx）
+stream:
+  enabled: true
+  url: rtmp://127.0.0.1:1935/live/stream
+  reconnect: true
+  reconnect_delay_ms: 2000
+  max_reconnect: -1
+
+# 本地 MP4 录制
+record:
+  enabled: false
+  path: output/record.mp4
+
+# 监控日志间隔（毫秒）
+monitor_interval_ms: 5000
+
+# 日志
+logging:
+  level: info
+  file: log/rk3568_vision.log
+  console: true
+  async: true
+  max_size: 10485760
+  backup_count: 3

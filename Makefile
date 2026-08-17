@@ -42,7 +42,10 @@ SRCS := $(wildcard src/*.cpp)
 OBJS := $(patsubst src/%.cpp,build/%.o,$(SRCS))
 
 ifeq ($(ARCH),aarch64)
-    LDFLAGS    += third_lib/librknn_api/aarch64/librknnrt.so
+    # 链接 third_lib 的 librknnrt.so 2.3.2（模型需 2.x 运行时），
+    # 并通过 rpath 让运行时优先加载 third_lib 的版本，不覆盖系统 /lib 的 2.1.0。
+    LDFLAGS    += third_lib/librknn_api/aarch64/librknnrt.so \
+                  -Wl,-rpath,'$$ORIGIN/../third_lib/librknn_api/aarch64'
     ALL_TARGET := $(TARGET)
 else
     ALL_TARGET := check

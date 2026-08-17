@@ -5,13 +5,24 @@
 ## 构建与运行
 
 ```bash
+./scripts/setup_env.sh   # 一键部署环境（全新板端：装 FFmpeg 开发库 + 配 librknnrt + 部署 mediamtx + 编译）
+./scripts/fetch_deps.sh  # 拉取三方依赖到 third_lib（rknn_api.h + librknnrt 2.3.2 + mediamtx）
+./scripts/start.sh       # 一键启动（mediamtx + rk3568_vision，参数透传，不做自动重启）
 make            # release：-O2 优化，生成 output/rk3568_vision
 make debug      # debug：-DVISION_DEBUG -g -O0，性能分析/队列深度/详细日志
 make clean      # 清理 build/ 与 output/
-./scripts/fetch_deps.sh   # 拉取 RKNN 依赖（rknn_api.h + librknnrt.so）
 ```
 
 命令行参数：`-c 配置 -d 设备 -W/-H/-f 宽高帧率 -s RTMP地址 --no-stream --no-inference --record 路径 -v`
+
+常见运行方式：
+- 摄像头检测推流：`./scripts/start.sh -c conf/default.yaml -d /dev/video0`
+- 摄像头纯推流（不推理）：`./scripts/start.sh -c conf/camera_push.yaml -d /dev/video0`
+- mp4 联调推流：`./scripts/start.sh -c conf/test_mp4.yaml`
+
+三方库统一放 `third_lib/`（不入库，fetch_deps.sh 拉取）：
+- `third_lib/librknn_api/`：rknn_api.h + librknnrt.so（2.3.2，模型需 2.x 运行时；程序经 rpath 引用，不覆盖系统 /lib 的 2.1.0）
+- `third_lib/mediamtx/`：mediamtx 推流服务器（单二进制 + 配置）
 
 ## 架构
 
