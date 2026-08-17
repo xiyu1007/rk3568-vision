@@ -25,6 +25,7 @@
 #include "vision/h264_encoder.hpp"
 #include "vision/inferencer.hpp"
 #include "vision/mp4_recorder.hpp"
+#include "vision/mpp_encoder.hpp"
 #include "vision/ring_buffer.hpp"
 #include "vision/rtmp_streamer.hpp"
 #include "vision/types.hpp"
@@ -79,7 +80,9 @@ private:
     Config config_;
     CameraSource camera_source_;
     std::unique_ptr<Inferencer> inferencer_;
-    H264Encoder encoder_;
+    H264Encoder encoder_;                          // 软编（libx264）
+    std::unique_ptr<MppEncoder> mpp_encoder_;      // 硬编（Rockchip MPP）
+    bool use_hardware_ = false;                    // 是否用 MPP 硬编
     std::unique_ptr<RtmpStreamer> rtmp_streamer_;
     std::unique_ptr<Mp4Recorder> mp4_recorder_;
 

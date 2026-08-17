@@ -138,15 +138,24 @@ bool Pipeline::Initialize() {
         }
     }
 
-    // 4. 打开编码器。
-    if (!encoder_.Open(config_.encode, width_, height_, fps_)) {
+    // 4. 打开编码器（硬编优先，失败回退软编）。
+    if (config_.encode.hardware) {
+        mpp_encoder_ = std::make_unique<MppEncoder>();
+        if (mpp_encoder_->Open(config_.encode, width_, height_, fps_)) {
+            use_hardware_ = true;
+        } else {
+            Logger::instance().warn("pipeline: MPP hardware encoder open failed, fallback to libx264");
+            mpp_encoder_.reset();
+        }
+    }
+    if (!use_hardware_ && !encoder_.Open(config_.encode, width_, height_, fps_)) {
         Logger::instance().error("pipeline: encoder open failed");
         return false;
     }
 
     Logger::instance().info("pipeline: initialized %ux%u@%u encoder=%s inference=%s",
                             width_, height_, fps_,
-                            encoder_.IsHardware() ? "hw" : "sw",
+                            use_hardware_ ? "hw(mpp)" : "sw(libx264)",
                             inferencer_ ? "on" : "off");
     return true;
 }
@@ -203,7 +212,7 @@ void Pipeline::Stop() {
     if (monitor_thread_.joinable()) { monitor_thread_.join(); }
 
     // 4. 释放资源。
-    encoder_.Close();
+    if (use_hardware_) { mpp_encoder_->Close(); } else { encoder_.Close(); }
     if (rtmp_streamer_) { rtmp_streamer_->Close(); }
     if (mp4_recorder_)  { mp4_recorder_->Close(); }
     Logger::instance().info("pipeline: stopped");
@@ -306,12 +315,20 @@ void Pipeline::EncodeLoop() {
                         frame->detection);
 
         const uint64_t start_us = GetCurrentTimestampUs();
-        encoder_.Encode(frame, [this](const PacketPtr& packet) { DispatchPacket(packet); });
+        if (use_hardware_) {
+            mpp_encoder_->Encode(frame, [this](const PacketPtr& packet) { DispatchPacket(packet); });
+        } else {
+            encoder_.Encode(frame, [this](const PacketPtr& packet) { DispatchPacket(packet); });
+        }
         perf_stats_.encode_us.store(GetCurrentTimestampUs() - start_us);
         perf_stats_.total_frames.fetch_add(1);
     }
     // 冲刷编码器残留帧。
-    encoder_.Flush([this](const PacketPtr& packet) { DispatchPacket(packet); });
+    if (use_hardware_) {
+        mpp_encoder_->Flush([this](const PacketPtr& packet) { DispatchPacket(packet); });
+    } else {
+        encoder_.Flush([this](const PacketPtr& packet) { DispatchPacket(packet); });
+    }
 }
 
 // ---------------------------------------------------------------------------
@@ -321,9 +338,12 @@ void Pipeline::DispatchPacket(const PacketPtr& packet) {
     // 首次收到编码包时，编码器的 SPS/PPS(extradata) 才就绪，此时打开封装器。
     if (!extradata_ready_) {
         extradata_ready_ = true;
-        if (encoder_.GetExtradata() != nullptr && encoder_.GetExtradataSize() > 0) {
-            extradata_.assign(encoder_.GetExtradata(),
-                              encoder_.GetExtradata() + encoder_.GetExtradataSize());
+        const uint8_t* ed = use_hardware_ ? mpp_encoder_->GetExtradata()
+                                          : encoder_.GetExtradata();
+        const int ed_size = use_hardware_ ? mpp_encoder_->GetExtradataSize()
+                                          : encoder_.GetExtradataSize();
+        if (ed != nullptr && ed_size > 0) {
+            extradata_.assign(ed, ed + ed_size);
         }
         Logger::instance().info("encoder extradata(SPS/PPS) size: %zu", extradata_.size());
 

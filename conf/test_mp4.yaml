@@ -36,11 +36,11 @@ pacer:
   target_fps: 25
   allow_duplicate: true
 
-# 编码：hardware=true 需 Rockchip FFmpeg 分支(h264_rkmpp)；当前板端用软编
+# 编码：hardware=true 用 Rockchip MPP 硬编（失败自动回退 libx264 软编）
 # 注：gop_size 不宜太大，否则关键帧间隔过长，拉流端迟迟等不到 IDR 出画面。
 # 设 10 保证关键帧 ≤2.5 秒（25fps 下 10 帧 = 0.4s 一个关键帧）
 encode:
-  hardware: false
+  hardware: true
   bitrate: 2000000
   gop_size: 10
   preset: ultrafast

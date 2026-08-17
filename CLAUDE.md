@@ -37,7 +37,7 @@ RTMP 推流 / MP4 录制的多线程流水线。头文件在 `include/vision/`�
 | 类型/配置/调试 | `types.hpp` `config.hpp` `debug.hpp`         | Frame（dmabuf 双来源）、配置、DEBUG 宏        |
 | 采集           | `camera_source.*`                                | V4L2 dmabuf 零拷贝 / mp4 解码，回调解耦       |
 | 推理           | `inferencer.*`                                   | RGA 前处理 + RKNN 推理 + YOLOv5 后处理 + 画框 |
-| 编码           | `h264_encoder.*`                                 | H264 硬编/软编                                |
+| 编码           | `h264_encoder.*` `mpp_encoder.*`               | H264 硬编(MPP)/软编(libx264)，硬编优先       |
 | 封装/推流/录制 | `muxer.*` `rtmp_streamer.*` `mp4_recorder.*` | FLV/MP4 封装、RTMP 推流（静音 AAC）、MP4 录制 |
 | 协调器         | `pipeline.*`                                     | 组合模块、回调解耦、队列、线程编排、监控      |
 | 基础设施       | `logger.*` `ring_buffer.hpp`                   | 日志、有界环形缓冲                            |
@@ -68,7 +68,10 @@ RKNN 运行时放 `third_lib/librknn_api/`（不入库，`fetch_deps.sh` 拉取�
 
 ## 注意事项
 
-- 板端 FFmpeg 无 h264_rkmpp，当前用 libx264 软编；硬件编码需 Rockchip FFmpeg 分支
+- 硬编用板端 Rockchip **MPP**（`mpp_encoder.cpp`，依赖 `librockchip-mpp-dev`，Makefile 链接
+  `-lrockchip_mpp`），软编用 libx264（`h264_encoder.cpp`）；`encode.hardware=true` 时**硬编优先、
+  失败自动回退软编**。MPP 硬编实测 `enc≈4ms`、CPU≈5%（软编 15~25ms、CPU 35~40%），大幅省 CPU。
+  MPP 输出 Annex-B，`mpp_encoder.cpp` 内部转 AVCC 供 FLV/RTMP 用，无需改 Muxer。
 - 板端 IMX415 传感器已检测到，`/dev/video0` 1280x720@25fps 采集正常
 - 摄像头画面发绿/发暗是**板端系统问题、非本项目代码**：系统升级到 ubuntu22.04 + kernel-6.1 后，
   `camera_engine_rkaiq`（6.8.0）**删掉了 IMX415 的 IQ 标定文件**（旧 ubuntu20.04/debian11 的 5.0x4.1

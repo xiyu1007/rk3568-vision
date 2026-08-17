@@ -93,7 +93,7 @@ RTMP 推流，端到端延迟控制在 100ms 以内。
 | 类型/配置/调试 | `types.hpp` `config.hpp` `debug.hpp`         | Frame（dmabuf 双来源）、配置、DEBUG 宏      |
 | 采集           | `camera_source.*`                                | V4L2 dmabuf 零拷贝 / mp4 解码，回调解耦     |
 | 推理           | `inferencer.*`                                   | RGA 前处理 + RKNN 推理 + 后处理 + NV12 画框 |
-| 编码           | `h264_encoder.*`                                 | H.264 硬编(h264_rkmpp)/软编(libx264)        |
+| 编码           | `h264_encoder.*` `mpp_encoder.*`               | H.264 硬编(MPP)/软编(libx264)，硬编优先     |
 | 封装/推流/录制 | `muxer.*` `rtmp_streamer.*` `mp4_recorder.*` | FLV/MP4、RTMP（静音AAC）、MP4 录制          |
 | 协调器         | `pipeline.*`                                     | 组合模块、回调解耦、队列、线程编排、监控    |
 | 基础设施       | `logger.*` `ring_buffer.hpp`                   | 日志、有界环形缓冲                          |
@@ -105,7 +105,7 @@ RTMP 推流，端到端延迟控制在 100ms 以内。
 | 设计模式                | 应用位置                | 说明                                          |
 | ----------------------- | ----------------------- | --------------------------------------------- |
 | **生产者-消费者** | 各阶段之间              | 有界环形缓冲 + 条件变量解耦，满则丢最旧帧     |
-| **策略模式**      | `Encoder` 硬/软编可选 | 硬编 h264_rkmpp / 软编 libx264 运行时切换     |
+| **策略模式**      | `Encoder` 硬/软编可选 | 硬编 MPP / 软编 libx264 运行时切换（硬编失败自动回退） |
 | **单例模式**      | `Logger`              | 全局唯一，各线程直接访问                      |
 | **RAII**          | 所有资源类              | V4L2/RKNN/FFmpeg 上下文析构自动释放           |
 | **状态机**        | `Pipeline`            | `running_` 标志控制 Idle→Running→Stopping |
@@ -202,8 +202,8 @@ V4L2 标准采集流程：`open → QUERYCAP → S_FMT(NV12) → S_PARM(fps) →
 
 ### 5.4 编码推流 `H264Encoder` + `Muxer`
 
-- `H264Encoder`：`hardware=true` → h264_rkmpp 硬编 / `false` → libx264 软编；
-  零 B 帧 + zerolatency 降延迟
+- 编码：`hardware=true` → Rockchip **MPP 硬编**（`mpp_encoder.cpp`，失败自动回退）/
+  `false` → libx264 软编（`h264_encoder.cpp`）；硬编零 B 帧、低 CPU 占用
 - `Muxer`：`flv` → RTMP 推流 / `mp4` → 本地录制。FLV 推流自动补一路静音 AAC 音轨
   （mediamtx v1.9.3 不转发纯视频流，须含音轨才转发视频；静音帧为硬编码字节，非真实音频）
 
@@ -237,7 +237,7 @@ pacer:
   target_fps: 25
   allow_duplicate: true
 encode:
-  hardware: false        # true 需 Rockchip FFmpeg 分支(h264_rkmpp)，当前板端用软编
+  hardware: true         # true=MPP 硬编（失败回退软编）/ false=libx264 软编
   bitrate: 2000000
   gop_size: 10
   preset: ultrafast
@@ -403,7 +403,7 @@ rk3568-vision/
 | mp4 输入 + 真实 NPU 推理 + 软编 + RTMP 推流 | ✅ 已验证 | 板端推流到 mediamtx，拉流端收到 h264 1280x720 帧 |
 | 真实摄像头采集 + 推理 + 编码 + RTMP 推流    | ✅ 已验证 | /dev/video0 1280x720@25fps，0 丢帧，退出干净     |
 | x86 编译检查                                | ✅ 已验证 | make 编译通过                                    |
-| 硬件编码（h264_rkmpp）                      | ⏳ 待接   | 板端 FFmpeg 无 rkmpp，需 Rockchip FFmpeg 分支    |
+| 硬件编码（Rockchip MPP）                    | ✅ 已验证 | `mpp_encoder.cpp`，enc≈4ms、CPU≈5%（软编 15~25ms/35%+） |
 
 > 已修复一个关键 bug：NV12→RGB 前处理的 UV 双重偏移（`uv_row` 已定位到行，`uv_off`
 > 又重复加了行偏移），导致越界读、偶发段错误，并污染模型输入的色度（正是「框大小

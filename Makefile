@@ -36,7 +36,9 @@ endif
 
 FFMPEG  := $(shell pkg-config --cflags --libs libavcodec libavformat libavutil libswscale)
 RGA     := $(shell pkg-config --libs librga)
-LDFLAGS := $(FFMPEG) -lpthread $(RGA)
+# Rockchip MPP 硬件编码（板端 librockchip-mpp-dev 提供；x86 无此库，仅在 aarch64 链接）
+MPP     := $(shell pkg-config --libs rockchip_mpp 2>/dev/null || echo -lrockchip_mpp)
+LDFLAGS := $(FFMPEG) -lpthread $(RGA) $(MPP)
 
 SRCS := $(wildcard src/*.cpp)
 OBJS := $(patsubst src/%.cpp,build/%.o,$(SRCS))

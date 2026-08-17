@@ -36,9 +36,9 @@ pacer:
   target_fps: 25
   allow_duplicate: true
 
-# 编码：软编 ultrafast（纯推流场景追求低延迟）
+# 编码：硬编优先（Rockchip MPP），失败自动回退软编 libx264
 encode:
-  hardware: false
+  hardware: true
   bitrate: 2000000
   gop_size: 10
   preset: ultrafast

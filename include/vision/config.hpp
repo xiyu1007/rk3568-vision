@@ -56,11 +56,11 @@ struct PacerConfig {
 // 编码配置
 // ---------------------------------------------------------------------------
 struct EncodeConfig {
-    bool hardware = true;                  // true=h264_rkmpp 硬编 / false=libx264 软编
+    bool hardware = true;                  // true=MPP 硬编（失败回退 libx264）/ false=libx264 软编
     uint32_t bitrate = 4000000;            // 码率（bps）
     uint32_t gop_size = 50;                // 关键帧间隔（帧数）
-    std::string preset = "fast";           // 软编 preset（x264）
-    std::string profile = "high";          // 软编 profile（x264）
+    std::string preset = "fast";           // 软编 preset（x264，仅 soft 时生效）
+    std::string profile = "high";          // 软编 profile（x264，仅 soft 时生效）
 };
 
 // ---------------------------------------------------------------------------

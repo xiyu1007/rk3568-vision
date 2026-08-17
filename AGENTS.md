@@ -19,7 +19,7 @@ RTMP 推流 / MP4 录制的多线程流水线。头文件在 `include/vision/`�
 
 - **采集** `camera_source.cpp`：V4L2 dmabuf 零拷贝 / mp4 解码，回调解耦（回调里只入队）
 - **推理** `inferencer.cpp`：RGA 前处理 + RKNN 推理 + YOLOv5 后处理 + NV12 画框
-- **编码** `h264_encoder.cpp`：H264 硬编(h264_rkmpp)/软编(libx264)
+- **编码** `h264_encoder.cpp`（软编 libx264）/ `mpp_encoder.cpp`（硬编 Rockchip MPP），硬编优先
 - **封装/推流/录制** `muxer.cpp` / `rtmp_streamer.cpp` / `mp4_recorder.cpp`
 - **协调器** `pipeline.cpp`：组合模块、回调解耦、队列、线程编排、监控
 - **线程通信**：有界环形缓冲 + 条件变量（`ring_buffer.hpp`），生产者-消费者，满则丢最旧
@@ -45,7 +45,7 @@ FFmpeg（libavcodec/format/util/swscale）、g++(C++17)、make、pkg-config。
 
 ## 注意事项
 
-- 板端 FFmpeg 无 h264_rkmpp，当前用 libx264 软编；硬件编码需 Rockchip FFmpeg 分支
+- 硬编用板端 Rockchip MPP（`mpp_encoder.cpp`，链接 `-lrockchip_mpp`），软编用 libx264；`encode.hardware=true` 时硬编优先、失败自动回退软编
 - 板端 IMX415 已检测到，`/dev/video0` 采集正常；前处理已用 RGA 硬件加速
 - 改 `include/vision/*.hpp` 后必须 `make clean` 全量重编（Makefile 不跟踪头文件依赖）
 - 模型可选 `model/yolov5n.rknn`（默认）/ `yolov5s.rknn` / `yolov5s_relu.rknn`，
