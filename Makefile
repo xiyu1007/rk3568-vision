@@ -15,8 +15,8 @@
 #   build/   编译中间产物（.o）
 #   output/  生成的可执行文件与录制输出
 #   log/     运行日志
-#   tmp/     临时文件（mediamtx 等）
 #   conf/    配置
+#   third_lib/  三方依赖（rknn_api + mediamtx，fetch_deps.sh 拉取，不入库）
 # ============================================================================
 
 ARCH := $(shell uname -m)

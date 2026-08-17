@@ -13,8 +13,8 @@ capture:
   source: v4l2
   device: /dev/video0
   file: data/test.mp4
-  width: 1280
-  height: 720
+  width: 720
+  height: 480
   fps: 25
   buffer_count: 6
   use_multi_planar: true

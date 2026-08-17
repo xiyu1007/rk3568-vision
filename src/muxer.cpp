@@ -141,9 +141,11 @@ void Muxer::WriteSilentAudio(int64_t video_pts) {
     }
     static const uint8_t kSilentAacFrame[4] = {0x01, 0x18, 0x20, 0x07};
 
-    // 音频时间基 1/44100，视频时间基 1/fps_。按视频时间戳换算目标音频采样数，
-    // 每次写 1024 样本直到追上。否则音频时间戳严重滞后，mediamtx 转发时会把
-    // 整条流当成异常而只发头不发帧。
+    // audio_pts_ 以 44100Hz 采样数累计；写入时必须换算到流的实际 time_base。
+    // FLV 封装器会把 audio 流 time_base 强制为 1/1000（毫秒），若直接写采样数，
+    // 采样数会被当成毫秒，导致音频时间戳比视频大 ~44 倍，A/V 严重错位——
+    // 拉流端（VLC/ffmpeg）长时间缓冲、画面停留数秒前。故这里按 1/44100 → 流
+    // time_base 换算，与视频时间戳（毫秒）对齐。
     const int64_t target = video_pts * 44100 / static_cast<int64_t>(fps_);
     do {
         AVPacket* packet = av_packet_alloc();
@@ -152,6 +154,7 @@ void Muxer::WriteSilentAudio(int64_t video_pts) {
         packet->stream_index = audio_stream_->index;
         packet->pts = audio_pts_;
         packet->dts = audio_pts_;
+        av_packet_rescale_ts(packet, AVRational{1, 44100}, audio_stream_->time_base);
         audio_pts_ += 1024;   // AAC-LC 每帧 1024 样本
         av_interleaved_write_frame(context_, packet);
         av_packet_free(&packet);

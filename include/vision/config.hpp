@@ -32,16 +32,16 @@ struct CaptureConfig {
 // ---------------------------------------------------------------------------
 struct InferenceConfig {
     bool enabled = true;                    // 是否启用推理
-    std::string model_path = "model/yolov5s.rknn";  // RKNN 模型路径
+    std::string model_path = "model/yolov5n.rknn";  // RKNN 模型路径
     std::string labels_path = "model/coco_80_labels_list.txt";  // 类别标签文件
     float confidence_threshold = 0.25f;    // 置信度阈值
     float nms_threshold = 0.45f;           // NMS 交并比阈值
     uint32_t model_width = 640;            // 模型输入宽
     uint32_t model_height = 640;           // 模型输入高
     uint32_t npu_core = 0;                 // NPU 核心（RK3568 固定 0）
-    bool use_sigmoid = true;               // 后处理是否 sigmoid：
+    bool use_sigmoid = false;              // 后处理是否 sigmoid：
+                                           //   yolov5n / relu 版 = false（输出已是 sigmoid 后值）
                                            //   标准 yolov5s = true（输出是 logits）
-                                           //   relu 版 = false（输出已是 sigmoid 后值）
 };
 
 // ---------------------------------------------------------------------------
@@ -68,7 +68,7 @@ struct EncodeConfig {
 // ---------------------------------------------------------------------------
 struct StreamConfig {
     bool enabled = true;                   // 是否启用推流
-    std::string url = "rtmp://127.0.0.1/live/stream";  // RTMP 地址
+    std::string url = "rtmp://127.0.0.1:1935/live/stream";  // RTMP 地址
     bool reconnect = true;                 // 断线是否重连
     uint32_t reconnect_delay_ms = 2000;    // 重连间隔
     int32_t max_reconnect = -1;            // 最大重连次数（-1 无限）

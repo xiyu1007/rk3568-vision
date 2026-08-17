@@ -9,7 +9,7 @@
 #
 # 部署内容：
 #   1. 安装编译依赖（FFmpeg 开发库）
-#   2. 配置 RKNN 运行时（替换系统 librknnrt.so 为 third_lib 的 2.3.2）
+#   2. 确认 RKNN 运行时就绪（third_lib 的 2.3.2，程序经 rpath 引用，不替换系统 so）
 #   3. 部署 mediamtx 推流服务器（third_lib/mediamtx，补执行权限）
 #   4. 编译项目（生成 output/rk3568_vision）
 #
@@ -52,21 +52,16 @@ run_sudo apt-get install -y \
     libswscale-dev
 
 # ---------------------------------------------------------------------------
-# 2. 配置 RKNN 运行时（替换系统 librknnrt.so）
+# 2. 确认 RKNN 运行时就绪（程序经 rpath 引用 third_lib，不替换系统 /lib）
 # ---------------------------------------------------------------------------
 echo ""
-echo "==> [2/4] 配置 RKNN 运行时"
+echo "==> [2/4] 确认 RKNN 运行时"
 RKNN_SO="third_lib/librknn_api/aarch64/librknnrt.so"
 if [ -f "$RKNN_SO" ]; then
-    # 备份系统原有 librknnrt（若存在）。
-    if [ -f /lib/librknnrt.so ] && [ ! -f /lib/librknnrt.so.bak ]; then
-        run_sudo cp /lib/librknnrt.so /lib/librknnrt.so.bak
-    fi
-    # 替换为 third_lib 的 2.3.2（模型用 rknn-toolkit2 2.3.2 转换，需 2.x 运行时）。
-    run_sudo cp "$RKNN_SO" /lib/librknnrt.so
-    echo "    librknnrt.so -> 2.3.2"
+    echo "    third_lib librknnrt.so 已就绪（$(strings "$RKNN_SO" | grep -i 'version' | head -1)）"
+    echo "    程序经 Makefile rpath 引用此版本，系统 /lib/librknnrt.so 保持默认不修改"
 else
-    echo "    [WARN] 未找到 $RKNN_SO，跳过（依赖 fetch_deps.sh 拉取）"
+    echo "    [WARN] 未找到 $RKNN_SO，请先执行 ./scripts/fetch_deps.sh 拉取"
 fi
 
 # ---------------------------------------------------------------------------

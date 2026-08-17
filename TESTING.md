@@ -47,10 +47,11 @@ ss -tlnp | grep 1935        # 应看到 LISTEN 0.0.0.0:1935
 ```
 
 - 已监听 → 直接进入测试。
-- 未监听 → 启动 mediamtx（单二进制 + 配置都在项目 `tmp/` 下）：
+- 未监听 → 启动 mediamtx（单二进制 + 配置都在 `third_lib/mediamtx/` 下），或直接用一键启动脚本：
 
 ```bash
-cd tmp && ./mediamtx &       # 后台启动，默认监听 1935（配置 tmp/mediamtx.yml）
+cd third_lib/mediamtx && ./mediamtx &       # 后台启动，默认监听 1935
+# 或一键启动（mediamtx + app）：./scripts/start.sh -c conf/test_mp4.yaml
 ```
 
 ---

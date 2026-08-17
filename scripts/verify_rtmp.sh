@@ -6,14 +6,14 @@
 # 用法：
 #   ./scripts/verify_rtmp.sh [rtmp_url]
 #
-# 默认 url：rtmp://127.0.0.1/live/stream
+# 默认 url：rtmp://127.0.0.1:1935/live/stream
 #
 # 用 ffprobe 检查流是否可读（能读到 H.264 流信息即说明推流成功）。
 # ============================================================================
 
 set -euo pipefail
 
-URL="${1:-rtmp://127.0.0.1/live/stream}"
+URL="${1:-rtmp://127.0.0.1:1935/live/stream}"
 
 if ! command -v ffprobe >/dev/null 2>&1; then
     echo "ffprobe 未安装（需要 ffmpeg），请先安装：sudo apt-get install -y ffmpeg"

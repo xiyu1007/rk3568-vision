@@ -50,8 +50,12 @@ bool RtmpStreamer::Push(const PacketPtr& packet) {
             (config_.max_reconnect >= 0 && reconnect_count_ >= config_.max_reconnect)) {
             return false;
         }
-        std::this_thread::sleep_for(
-            std::chrono::milliseconds(config_.reconnect_delay_ms));
+        // 仅断线重连时等待；首次连接立即打开，否则会白白睡 2s，期间编码好的包
+        // 堆积/丢旧，导致流起始时间戳跳变、拉流端缓冲。
+        if (reconnect_count_ > 0) {
+            std::this_thread::sleep_for(
+                std::chrono::milliseconds(config_.reconnect_delay_ms));
+        }
         if (!Open()) {
             ++reconnect_count_;
             return false;

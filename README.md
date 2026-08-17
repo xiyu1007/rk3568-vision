@@ -90,7 +90,7 @@ RTMP 推流，端到端延迟控制在 100ms 以内。
 
 | 模块           | 文件                                               | 职责                                        |
 | -------------- | -------------------------------------------------- | ------------------------------------------- |
-| 类型/配置/调试 | `types/config/debug.hpp`                         | Frame（dmabuf 双来源）、配置、DEBUG 宏      |
+| 类型/配置/调试 | `types.hpp` `config.hpp` `debug.hpp`         | Frame（dmabuf 双来源）、配置、DEBUG 宏      |
 | 采集           | `camera_source.*`                                | V4L2 dmabuf 零拷贝 / mp4 解码，回调解耦     |
 | 推理           | `inferencer.*`                                   | RGA 前处理 + RKNN 推理 + 后处理 + NV12 画框 |
 | 编码           | `h264_encoder.*`                                 | H.264 硬编(h264_rkmpp)/软编(libx264)        |
@@ -215,25 +215,36 @@ V4L2 标准采集流程：`open → QUERYCAP → S_FMT(NV12) → S_PARM(fps) →
 
 ```yaml
 capture:
-  source: v4l2        # v4l2=摄像头 / mp4=视频文件
+  source: v4l2            # v4l2=摄像头 / mp4=视频文件
   device: /dev/video0
   file: data/test.mp4
   width: 1280
   height: 720
   fps: 25
+  buffer_count: 6
+  use_multi_planar: true
 inference:
   enabled: true
-  model_path: model/yolov5s.rknn
+  model_path: model/yolov5n.rknn
   labels_path: model/coco_80_labels_list.txt
-  conf_threshold: 0.25
+  confidence_threshold: 0.25
   nms_threshold: 0.45
+  model_width: 640
+  model_height: 640
+  npu_core: 0
+  use_sigmoid: false    # relu/n 模型输出已是 sigmoid 后值；标准 yolov5s 改为 true
+pacer:
+  target_fps: 25
+  allow_duplicate: true
 encode:
-  hardware: false     # true 需 Rockchip FFmpeg 分支(h264_rkmpp)，当前板端用软编
-  bitrate: 4000000
-  gop_size: 50
+  hardware: false        # true 需 Rockchip FFmpeg 分支(h264_rkmpp)，当前板端用软编
+  bitrate: 2000000
+  gop_size: 10
+  preset: ultrafast
+  profile: high
 stream:
   enabled: true
-  url: rtmp://127.0.0.1/live/stream
+  url: rtmp://127.0.0.1:1935/live/stream
 record:
   enabled: false
   path: output/record.mp4
@@ -298,8 +309,9 @@ make
 ### 8.3 RTMP 拉流验证
 
 ```bash
-# 板端启动 mediamtx（默认监听 1935，单二进制 + 配置都在项目 tmp/ 下）
-cd tmp && ./mediamtx &
+# 一键启动（mediamtx + app 一起，推荐）：./scripts/start.sh -c conf/default.yaml -d /dev/video0
+# 或单独启动 mediamtx（单二进制 + 配置都在 third_lib/mediamtx/ 下）
+cd third_lib/mediamtx && ./mediamtx &
 # 拉流查看（板端流水线推流后；<IP> 用板端 IP，本机可用 127.0.0.1）
 ffplay rtmp://127.0.0.1:1935/live/stream
 # 检查流信息
@@ -311,22 +323,22 @@ ffprobe -v error -show_entries stream=codec_name,width,height \
 
 ## 9. 性能与延迟分析
 
-### 9.1 延迟分解（实测，640x480 摄像头 + yolov5s_relu + RGA）
+### 9.1 延迟分解（实测，板端摄像头 + yolov5n + RGA + 软编）
 
-| 阶段               | 延迟             | 说明                               |
-| ------------------ | ---------------- | ---------------------------------- |
-| 采集（DQBUF+拷贝） | ~60-76ms         | V4L2 poll 等待 + mmap 拷贝         |
-| 前处理（RGA）      | ~2-3ms           | RGA 硬件 NV12→RGB（原 CPU ~50ms） |
-| 推理（NPU）        | ~43-53ms         | yolov5s_relu（原 yolov5s ~57ms）   |
-| 后处理（解码+NMS） | ~19-21ms         | CPU 解码 + NMS                     |
-| 编码               | ~29-45ms         | libx264 软编                       |
-| **实际帧率** | **~15fps** | 瓶颈在 NPU 推理 ~45ms              |
+| 阶段               | 延迟             | 说明                                          |
+| ------------------ | ---------------- | --------------------------------------------- |
+| 采集（DQBUF）      | ~60-76ms         | V4L2 poll 等待（mmap 零拷贝）                 |
+| 前处理（RGA）      | ~2-3ms           | RGA 硬件 NV12→RGB（原 CPU ~50ms）            |
+| 推理（NPU）        | ~25-50ms         | yolov5n（INT8 量化）                          |
+| 后处理（解码+NMS） | ~19-21ms         | CPU 解码 + NMS                                |
+| 编码               | ~15-25ms         | libx264 软编 ultrafast                        |
+| **实际帧率** | **~25fps** | 纯推流（不推理）达 25fps；推理链路由 NPU 决定 |
 
 ### 9.2 关键优化
 
 - V4L2 mmap 零拷贝
 - **RGA 硬件加速 NV12→RGB 前处理**（CPU 浮点 → RGA 2D 加速器，50ms→3ms）
-- **yolov5s_relu 模型**（relu 激活，NPU 更快）+ INT8 量化
+- **yolov5n 模型**（n 尺寸，NPU 更快）+ INT8 量化
 - 稳帧器保证输出码率稳定
 - 零 B 帧编码降低延迟
 - 有界队列 + 丢最旧，避免延迟累积
@@ -359,10 +371,11 @@ rk3568-vision/
 │   ├── logger.hpp            # 日志
 │   └── ring_buffer.hpp       # 环形缓冲
 ├── src/                      # 对应 .cpp + main.cpp + config.cpp
-├── model/                    # yolov5s_relu.rknn + yolov5s.rknn + coco_80_labels_list.txt
-├── third_lib/                # 依赖（不入库，fetch_deps.sh 拉取）
-│   └── librknn_api/          #   librknnrt.so + rknn_api.h
-└── scripts/                  # fetch_deps.sh / nginx-rtmp.conf / verify_rtmp.sh
+├── model/                    # yolov5n.rknn + yolov5s.rknn + yolov5s_relu.rknn + coco_80_labels_list.txt
+├── third_lib/                # 三方依赖（不入库，fetch_deps.sh 拉取）
+│   ├── librknn_api/          #   librknnrt.so(2.3.2) + rknn_api.h
+│   └── mediamtx/             #   mediamtx 推流服务器（单二进制 + 配置）
+└── scripts/                  # setup_env.sh / start.sh / fetch_deps.sh / verify_rtmp.sh
 ```
 
 ---
@@ -373,7 +386,11 @@ rk3568-vision/
 | ---------------------------------------- | --------- | ------------------------------------------------------------------------------- |
 | FFmpeg（libavcodec/format/util/swscale） | 编码/封装 | `apt-get install libavcodec-dev libavformat-dev libavutil-dev libswscale-dev` |
 | g++ (C++17) + make + pkg-config          | 构建      | `apt-get install build-essential pkg-config`                                  |
-| RKNN 运行时（librknnrt.so + rknn_api.h） | NPU 推理  | `./scripts/fetch_deps.sh`（或手动放 third_lib/librknn_api/）                  |
+| RGA（librga）                            | 前处理    | 板端系统自带（RK3568 镜像自带 librga）                                          |
+| RKNN 运行时（librknnrt.so + rknn_api.h） | NPU 推理  | `./scripts/fetch_deps.sh`（拉取到 third_lib/librknn_api/）                    |
+| mediamtx                                 | RTMP 推流 | `./scripts/fetch_deps.sh`（拉取到 third_lib/mediamtx/）                       |
+
+> 一键部署（全新板端）：`./scripts/setup_env.sh`；一键启动：`./scripts/start.sh`。
 
 > 配置解析用自研 YAML 解析器，无额外依赖。
 
@@ -391,9 +408,6 @@ rk3568-vision/
 > 已修复一个关键 bug：NV12→RGB 前处理的 UV 双重偏移（`uv_row` 已定位到行，`uv_off`
 > 又重复加了行偏移），导致越界读、偶发段错误，并污染模型输入的色度（正是「框大小
 > 不匹配 / 一直是 person」的诱因之一）。
-
-> 性能提示：实测单帧推理链路（前置处理+NPU+后处理）约 97ms，瓶颈在前置处理
-> NV12→RGB 的 CPU 浮点运算，后续可用 RGA 硬件加速降到毫秒级。
 
 ---
 
