@@ -2,29 +2,28 @@
 # Makefile — RK3568 视觉流水线构建脚本
 # ============================================================================
 #
-# 平台自动判断（uname -m）：
-#   aarch64（RK3568 板端）：链接真实 RKNN 运行时 librknnrt.so，生成可执行文件
-#   x86_64（开发机）：      只编译到 .o 做语法检查（不链接，因为 RKNN 需板端 NPU）
+# 构建方式：
+#   1) aarch64（板端原生）：make —— 链接板端 FFmpeg/RGA/MPP + third_lib 的 RKNN，
+#      生成可执行文件 output/rk3568_vision
+#   2) x86_64 交叉编译：    make CROSS_COMPILE=aarch64-linux-gnu-
+#      —— 在 x86 开发机上编出 aarch64 可执行文件，直接拷到板端运行
+#      （aarch64 的 FFmpeg/RGA/MPP 头文件+库已入库在 third_lib/aarch64-sysroot/）
+#   3) x86_64 纯编译检查：  make check —— 只编译到 .o 做语法检查
 #
 # 构建类型：
 #   make            # release：-O2 优化
-#   make debug      # debug：-DVISION_DEBUG -g -O0，开启性能分析/队列深度/详细日志
+#   make debug      # debug：-DVISION_DEBUG -g -O0
 #   make clean      # 清理 build/ 与 output/
-#
-# 目录约定：
-#   build/   编译中间产物（.o）
-#   output/  生成的可执行文件与录制输出
-#   log/     运行日志
-#   conf/    配置
-#   third_lib/  三方依赖（rknn_api + mediamtx，fetch_deps.sh 拉取，不入库）
 # ============================================================================
+
+CROSS_COMPILE ?=
+SYSROOT ?= third_lib/aarch64-sysroot
 
 ARCH := $(shell uname -m)
 
-# 构建类型：release（默认）/ debug。
 BUILD ?= release
 
-CXX := g++
+CXX := $(CROSS_COMPILE)g++
 BASE_FLAGS := -std=c++17 -Wall -Wextra -Iinclude -Ithird_lib/librknn_api/include
 ifeq ($(BUILD),debug)
     CXXFLAGS := $(BASE_FLAGS) -DVISION_DEBUG -g -O0
@@ -34,21 +33,44 @@ else
     TARGET   := output/rk3568_vision
 endif
 
-FFMPEG  := $(shell pkg-config --cflags --libs libavcodec libavformat libavutil libswscale)
-RGA     := $(shell pkg-config --libs librga)
-# Rockchip MPP 硬件编码（板端 librockchip-mpp-dev 提供；x86 无此库，仅在 aarch64 链接）
-MPP     := $(shell pkg-config --libs rockchip_mpp 2>/dev/null || echo -lrockchip_mpp)
-LDFLAGS := $(FFMPEG) -lpthread $(RGA) $(MPP)
+# ---------------------------------------------------------------------------
+# 依赖库：原生用 pkg-config；交叉编译用 SYSROOT 里的 aarch64 头文件/库
+# ---------------------------------------------------------------------------
+ifeq ($(CROSS_COMPILE),)
+    FFMPEG := $(shell pkg-config --cflags --libs libavcodec libavformat libavutil libswscale 2>/dev/null)
+    RGA    := $(shell pkg-config --libs librga 2>/dev/null)
+    MPP    := $(shell pkg-config --libs rockchip_mpp 2>/dev/null || echo -lrockchip_mpp)
+    CROSS_LDFLAGS :=
+else
+    CXXFLAGS += -I$(SYSROOT)/usr/include
+    FFMPEG := -L$(SYSROOT)/usr/lib -lavcodec -lavformat -lavutil -lswscale
+    RGA    := -lrga
+    MPP    := -lrockchip_mpp
+    # 交叉链接时 FFmpeg 共享库引用的第三方编解码库（libtheora/libvorbis 等）
+    # 不在 sysroot 里，用 --allow-shlib-undefined 放行，运行时由板端动态库解析。
+    CROSS_LDFLAGS := -Wl,--allow-shlib-undefined
+endif
+LDFLAGS := $(FFMPEG) -lpthread $(RGA) $(MPP) $(CROSS_LDFLAGS)
 
 SRCS := $(wildcard src/*.cpp)
 OBJS := $(patsubst src/%.cpp,build/%.o,$(SRCS))
 
-ifeq ($(ARCH),aarch64)
-    # 链接 third_lib 的 librknnrt.so 2.3.2（模型需 2.x 运行时），
-    # 并通过 rpath 让运行时优先加载 third_lib 的版本，不覆盖系统 /lib 的 2.1.0。
+# ---------------------------------------------------------------------------
+# 是否生成可执行文件：板端原生 aarch64，或交叉编译
+# ---------------------------------------------------------------------------
+ifeq ($(CROSS_COMPILE),)
+    ifeq ($(ARCH),aarch64)
+        LINK_TARGET := $(TARGET)
+    endif
+else
+    LINK_TARGET := $(TARGET)
+endif
+
+ifneq ($(LINK_TARGET),)
+    # 链接 third_lib 的 librknnrt.so 2.3.2，并通过 rpath 让运行时优先加载 third_lib 版本。
     LDFLAGS    += third_lib/librknn_api/aarch64/librknnrt.so \
                   -Wl,-rpath,'$$ORIGIN/../third_lib/librknn_api/aarch64'
-    ALL_TARGET := $(TARGET)
+    ALL_TARGET := $(LINK_TARGET)
 else
     ALL_TARGET := check
 endif
@@ -57,19 +79,16 @@ endif
 
 all: $(ALL_TARGET)
 
-# debug 构建（与 release 输出不同文件名，便于并存对比）。
 debug:
 	$(MAKE) BUILD=debug
 
-# 完整构建（aarch64 板端）。
 $(TARGET): $(OBJS)
 	@mkdir -p output
 	$(CXX) -o $@ $^ $(LDFLAGS)
-	@echo "==> 构建完成: $@ ($(BUILD))"
+	@echo "==> 构建完成: $@ ($(BUILD), $(if $(CROSS_COMPILE),交叉编译 aarch64,原生 $(ARCH)))"
 
-# x86 编译检查：只编译到 .o，不链接（真实 RKNN 推理需在 aarch64 板端）。
 check: $(OBJS)
-	@echo "==> x86 编译检查通过（真实推理需在 RK3568 板端链接/运行）"
+	@echo "==> x86 编译检查通过（生成可执行文件需板端 make 或交叉编译）"
 
 build/%.o: src/%.cpp
 	@mkdir -p build
