@@ -102,13 +102,13 @@ RTMP 推流，端到端延迟控制在 100ms 以内。
 
 ## 3. 设计模式
 
-| 设计模式                | 应用位置                | 说明                                          |
-| ----------------------- | ----------------------- | --------------------------------------------- |
-| **生产者-消费者** | 各阶段之间              | 有界环形缓冲 + 条件变量解耦，满则丢最旧帧     |
+| 设计模式                | 应用位置                | 说明                                                   |
+| ----------------------- | ----------------------- | ------------------------------------------------------ |
+| **生产者-消费者** | 各阶段之间              | 有界环形缓冲 + 条件变量解耦，满则丢最旧帧              |
 | **策略模式**      | `Encoder` 硬/软编可选 | 硬编 MPP / 软编 libx264 运行时切换（硬编失败自动回退） |
-| **单例模式**      | `Logger`              | 全局唯一，各线程直接访问                      |
-| **RAII**          | 所有资源类              | V4L2/RKNN/FFmpeg 上下文析构自动释放           |
-| **状态机**        | `Pipeline`            | `running_` 标志控制 Idle→Running→Stopping |
+| **单例模式**      | `Logger`              | 全局唯一，各线程直接访问                               |
+| **RAII**          | 所有资源类              | V4L2/RKNN/FFmpeg 上下文析构自动释放                    |
+| **状态机**        | `Pipeline`            | `running_` 标志控制 Idle→Running→Stopping          |
 
 ---
 
@@ -297,6 +297,7 @@ make clean      # 清理
 ```bash
 cd /home/gx/project/gx/rk3568-vision
 make
+# sudo fuser -k /dev/video0 # 
 ./output/rk3568_vision -c conf/default.yaml -d /dev/video0
 ```
 
@@ -323,7 +324,7 @@ ffprobe -v error -show_entries stream=codec_name,width,height \
 
 ## 9. 性能与延迟分析
 
-### 9.1 延迟分解（实测，板端摄像头 + yolov5n + RGA + 软编）
+### 9.1 延迟分解（实测，板端摄像头 + yolov5n + RGA + 硬编 MPP）
 
 | 阶段               | 延迟             | 说明                                          |
 | ------------------ | ---------------- | --------------------------------------------- |
@@ -331,7 +332,7 @@ ffprobe -v error -show_entries stream=codec_name,width,height \
 | 前处理（RGA）      | ~2-3ms           | RGA 硬件 NV12→RGB（原 CPU ~50ms）            |
 | 推理（NPU）        | ~25-50ms         | yolov5n（INT8 量化）                          |
 | 后处理（解码+NMS） | ~19-21ms         | CPU 解码 + NMS                                |
-| 编码               | ~15-25ms         | libx264 软编 ultrafast                        |
+| 编码               | ~4-7ms           | MPP 硬编（软编 libx264 15~25ms）              |
 | **实际帧率** | **~25fps** | 纯推流（不推理）达 25fps；推理链路由 NPU 决定 |
 
 ### 9.2 关键优化
@@ -387,8 +388,8 @@ rk3568-vision/
 | ---------------------------------------- | --------- | ------------------------------------------------------------------------------- |
 | FFmpeg（libavcodec/format/util/swscale） | 软编/封装 | `apt-get install libavcodec-dev libavformat-dev libavutil-dev libswscale-dev` |
 | g++ (C++17) + make + pkg-config          | 构建      | `apt-get install build-essential pkg-config`                                  |
-| RGA（librga）                            | 前处理    | `apt-get install librga-dev`（RK3568 镜像通常自带）                             |
-| MPP（librockchip-mpp）                   | 硬编      | `apt-get install librockchip-mpp-dev`（RK3568 镜像通常自带）                    |
+| RGA（librga）                            | 前处理    | `apt-get install librga-dev`（RK3568 镜像通常自带）                           |
+| MPP（librockchip-mpp）                   | 硬编      | `apt-get install librockchip-mpp-dev`（RK3568 镜像通常自带）                  |
 | RKNN 运行时（librknnrt.so + rknn_api.h） | NPU 推理  | `./scripts/fetch_deps.sh`（拉取到 third_lib/librknn_api/）                    |
 | mediamtx                                 | RTMP 推流 | `./scripts/fetch_deps.sh`（拉取到 third_lib/mediamtx/）                       |
 
@@ -400,11 +401,11 @@ rk3568-vision/
 
 ## 12. 测试状态
 
-| 项                                          | 状态      | 说明                                             |
-| ------------------------------------------- | --------- | ------------------------------------------------ |
-| mp4 输入 + 真实 NPU 推理 + 软编 + RTMP 推流 | ✅ 已验证 | 板端推流到 mediamtx，拉流端收到 h264 1280x720 帧 |
-| 真实摄像头采集 + 推理 + 编码 + RTMP 推流    | ✅ 已验证 | /dev/video0 1280x720@25fps，0 丢帧，退出干净     |
-| x86 编译检查                                | ✅ 已验证 | make 编译通过                                    |
+| 项                                          | 状态      | 说明                                                        |
+| ------------------------------------------- | --------- | ----------------------------------------------------------- |
+| mp4 输入 + 真实 NPU 推理 + 编码 + RTMP 推流 | ✅ 已验证 | 板端推流到 mediamtx，拉流端收到 h264 1280x720 帧            |
+| 真实摄像头采集 + 推理 + 编码 + RTMP 推流    | ✅ 已验证 | /dev/video0 1280x720@25fps，0 丢帧，退出干净                |
+| x86 编译检查                                | ✅ 已验证 | make 编译通过                                               |
 | 硬件编码（Rockchip MPP）                    | ✅ 已验证 | `mpp_encoder.cpp`，enc≈4ms、CPU≈5%（软编 15~25ms/35%+） |
 
 > 已修复一个关键 bug：NV12→RGB 前处理的 UV 双重偏移（`uv_row` 已定位到行，`uv_off`
