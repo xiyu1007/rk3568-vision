@@ -56,8 +56,10 @@ RTMP 推流 / MP4 录制的多线程流水线。头文件在 `include/vision/`�
 
 ## 依赖
 
-FFmpeg（libavcodec/format/util/swscale）、g++(C++17)、make、pkg-config。
-RKNN 运行时放 `third_lib/librknn_api/`（不入库，`fetch_deps.sh` 拉取）。
+- 编译/封装：FFmpeg（libavcodec/format/util/swscale）、g++(C++17)、make、pkg-config
+- 前处理：RGA（`librga-dev`）；硬编：MPP（`librockchip-mpp-dev`）—— 均 RK3568 板端仓库自带
+- RKNN 运行时放 `third_lib/librknn_api/`（不入库，`fetch_deps.sh` 拉取）；RTMP 服务器 mediamtx
+- **不依赖 nginx / nginx-rtmp-module**（`package/` 下的 nginx 源码是旧方案残留，已 .gitignore 忽略）
 
 ## 测试环境
 

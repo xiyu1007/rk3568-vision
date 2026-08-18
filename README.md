@@ -355,15 +355,15 @@ rk3568-vision/
 ├── conf/
 │   ├── default.yaml          # 默认配置（摄像头检测输入）
 │   ├── test_mp4.yaml         # mp4 输入测试配置（无摄像头联调）
-│   ├── camera_push.yaml      # 摄像头纯推流配置（不推理，最低延迟）
-│   └── nginx-rtmp.conf       # nginx-rtmp 备选配置
+│   └── camera_push.yaml      # 摄像头纯推流配置（不推理，最低延迟）
 ├── include/vision/           # 头文件（namespace vision）
 │   ├── types.hpp             # 核心类型（Frame dmabuf 双来源、DetectResult）
 │   ├── config.hpp            # 配置结构体
 │   ├── debug.hpp             # DEBUG 条件编译宏
 │   ├── camera_source.hpp     # 采集（V4L2 零拷贝/mp4，回调解耦）
 │   ├── inferencer.hpp        # 推理（RGA + RKNN + 后处理 + 画框）
-│   ├── h264_encoder.hpp      # H264 编码
+│   ├── h264_encoder.hpp      # H264 软编（libx264）
+│   ├── mpp_encoder.hpp       # H264 硬编（Rockchip MPP）
 │   ├── muxer.hpp             # FLV/MP4 封装
 │   ├── rtmp_streamer.hpp     # RTMP 推流（静音 AAC）
 │   ├── mp4_recorder.hpp      # MP4 录制
@@ -384,11 +384,16 @@ rk3568-vision/
 
 | 依赖                                     | 用途      | 获取                                                                            |
 | ---------------------------------------- | --------- | ------------------------------------------------------------------------------- |
-| FFmpeg（libavcodec/format/util/swscale） | 编码/封装 | `apt-get install libavcodec-dev libavformat-dev libavutil-dev libswscale-dev` |
+| FFmpeg（libavcodec/format/util/swscale） | 软编/封装 | `apt-get install libavcodec-dev libavformat-dev libavutil-dev libswscale-dev` |
 | g++ (C++17) + make + pkg-config          | 构建      | `apt-get install build-essential pkg-config`                                  |
-| RGA（librga）                            | 前处理    | 板端系统自带（RK3568 镜像自带 librga）                                          |
+| RGA（librga）                            | 前处理    | `apt-get install librga-dev`（RK3568 镜像通常自带）                             |
+| MPP（librockchip-mpp）                   | 硬编      | `apt-get install librockchip-mpp-dev`（RK3568 镜像通常自带）                    |
 | RKNN 运行时（librknnrt.so + rknn_api.h） | NPU 推理  | `./scripts/fetch_deps.sh`（拉取到 third_lib/librknn_api/）                    |
 | mediamtx                                 | RTMP 推流 | `./scripts/fetch_deps.sh`（拉取到 third_lib/mediamtx/）                       |
+
+> RTMP 服务器用 **mediamtx**（单二进制），**不依赖 nginx / nginx-rtmp-module**。仓库里
+> `package/` 下的 nginx 源码和 `conf/nginx-rtmp.conf` 是旧方案残留（已被 .gitignore 忽略），
+> 无需部署。
 
 > 一键部署（全新板端）：`./scripts/setup_env.sh`；一键启动：`./scripts/start.sh`。
 

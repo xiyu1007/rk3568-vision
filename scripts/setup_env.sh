@@ -40,16 +40,21 @@ echo " 项目目录: $PROJECT_DIR"
 echo "============================================================"
 
 # ---------------------------------------------------------------------------
-# 1. 安装编译依赖（FFmpeg 开发库）
+# 1. 安装编译依赖（FFmpeg 开发库 + RGA + MPP 硬件编码库）
+#    注：librga-dev / librockchip-mpp-dev 是 Rockchip 板端仓库自带（LubanCat 镜像
+#    通常已预装，此处安装仅为全新/精简镜像兜底；普通 x86 机器无此仓库会失败，
+#    但 x86 仅做编译检查不链接，可忽略）。
 # ---------------------------------------------------------------------------
 echo ""
-echo "==> [1/4] 安装编译依赖（FFmpeg 开发库）"
+echo "==> [1/4] 安装编译依赖（FFmpeg + RGA + MPP）"
 run_sudo apt-get update -y
 run_sudo apt-get install -y \
     libavcodec-dev \
     libavformat-dev \
     libavutil-dev \
-    libswscale-dev
+    libswscale-dev \
+    librga-dev \
+    librockchip-mpp-dev || echo "    [WARN] RGA/MPP 开发库安装失败（x86 编译检查或非 Rockchip 板端可忽略）"
 
 # ---------------------------------------------------------------------------
 # 2. 确认 RKNN 运行时就绪（程序经 rpath 引用 third_lib，不替换系统 /lib）
