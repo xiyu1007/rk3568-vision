@@ -391,10 +391,6 @@ rk3568-vision/
 | RKNN 运行时（librknnrt.so + rknn_api.h） | NPU 推理  | `./scripts/fetch_deps.sh`（拉取到 third_lib/librknn_api/）                    |
 | mediamtx                                 | RTMP 推流 | `./scripts/fetch_deps.sh`（拉取到 third_lib/mediamtx/）                       |
 
-> RTMP 服务器用 **mediamtx**（单二进制），**不依赖 nginx / nginx-rtmp-module**。仓库里
-> `package/` 下的 nginx 源码和 `conf/nginx-rtmp.conf` 是旧方案残留（已被 .gitignore 忽略），
-> 无需部署。
-
 > 一键部署（全新板端）：`./scripts/setup_env.sh`；一键启动：`./scripts/start.sh`。
 
 > 配置解析用自研 YAML 解析器，无额外依赖。

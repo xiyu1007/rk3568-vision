@@ -59,13 +59,12 @@ RTMP 推流 / MP4 录制的多线程流水线。头文件在 `include/vision/`�
 - 编译/封装：FFmpeg（libavcodec/format/util/swscale）、g++(C++17)、make、pkg-config
 - 前处理：RGA（`librga-dev`）；硬编：MPP（`librockchip-mpp-dev`）—— 均 RK3568 板端仓库自带
 - RKNN 运行时放 `third_lib/librknn_api/`（不入库，`fetch_deps.sh` 拉取）；RTMP 服务器 mediamtx
-- **不依赖 nginx / nginx-rtmp-module**（`package/` 下的 nginx 源码是旧方案残留，已 .gitignore 忽略）
 
 ## 测试环境
 
 - **rk3568 板端**：`ssh rk3568`，工作目录 `/home/gx/project/gx/rk3568-vision`
 - **ubuntu 虚拟机**：`ssh ubuntu`，仅做 x86 编译检查
-- **RTMP 服务器**：板端 mediamtx（`third_lib/mediamtx/` 下，`cd third_lib/mediamtx && ./mediamtx`，监听 1935），非 nginx-rtmp；可用 `./scripts/start.sh` 一键启动
+- **RTMP 服务器**：板端 mediamtx（`third_lib/mediamtx/` 下，`cd third_lib/mediamtx && ./mediamtx`，监听 1935）；可用 `./scripts/start.sh` 一键启动
 - 测试顺序：先 mp4 输入（`source=mp4`）验证全链路，再切真实摄像头
 
 ## 注意事项

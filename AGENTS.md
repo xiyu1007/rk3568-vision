@@ -35,7 +35,7 @@ RTMP 推流 / MP4 录制的多线程流水线。头文件在 `include/vision/`�
 FFmpeg（libavcodec/format/util/swscale）、g++(C++17)、make、pkg-config。
 板端自带 RGA（`librga-dev`）与 MPP（`librockchip-mpp-dev`，硬编）。
 三方库统一放 `third_lib/`（不入库，`fetch_deps.sh` 拉取）：`librknn_api/`（RKNN 2.3.2）
-与 `mediamtx/`（RTMP 推流服务器）。**不依赖 nginx / nginx-rtmp-module**。
+与 `mediamtx/`（RTMP 推流服务器）。
 
 ## 测试环境
 
