@@ -103,12 +103,12 @@ RTMP 推流 / MP4 录制的多线程流水线。头文件在 `include/vision/`�
 - Makefile 规则 `build/%.o: src/%.cpp` 不跟踪头文件依赖，改 `include/vision/*.hpp` 后必须
   `make clean` 全量重编，否则新旧 .o 布局不一致会导致段错误
 - 前处理已用 RGA 硬件加速（`inferencer.cpp` 用 im2d 的 `imresize` 做 NV12→RGB 转换+缩放），
-  从 ~50ms 降到 ~3ms。源 buffer 必须按数据来源选包装方式：**V4L2 帧走 `wrapbuffer_fd`
-  （`frame->dma_fds[0]`，dma-buf 零拷贝共享），mp4 帧走 `wrapbuffer_virtualaddr`**；目标
-  `rgb_tmp_buffer_` 是 CPU 内存、走虚拟地址。不要对 V4L2 的 dma-coherent buffer 用
-  `wrapbuffer_virtualaddr`——RGA2 会用自身 MMU 重映射该段内存，IOMMU 翻译失败返回 -EINVAL
-  （日志 "RGA_BLIT fail: Invalid argument"，前处理回退 CPU）。`wrapbuffer_*` 参数顺序都是
-  addr/fd,width,height,format,wstride,hstride（wstride/hstride 单位像素）
+  从 ~50ms 降到 ~3ms。**RGA 只用于 V4L2 零拷贝帧**：源走 `wrapbuffer_fd`（`frame->dma_fds[0]`，
+  dma-buf 零拷贝共享）、目标 `rgb_tmp_buffer_` 走 `wrapbuffer_virtualaddr`。**mp4/稳帧器克隆帧
+  是 CPU 内存，直接走 CPU 转换、不走 RGA**——RGA2 对 CPU 虚拟地址走自身 MMU 重映射会间歇性
+  返回 -EINVAL（日志 "RGA_BLIT fail: Invalid argument"）并可能挂死内核，务必避免对 CPU 内存走
+  `wrapbuffer_virtualaddr`。`wrapbuffer_*` 参数顺序都是 addr/fd,width,height,format,wstride,hstride
+  （wstride/hstride 单位像素）
 - 模型可选：`model/yolov5n.rknn`（n 尺寸，默认）/ `model/yolov5s.rknn`（标准 silu）/ `model/yolov5s_relu.rknn`（relu 激活）。
   后处理差异在 sigmoid：relu/n 版输出已是 sigmoid 后的值、标准 yolov5s 是 logits。由配置
   `inference.use_sigmoid` 决定（relu/n=`false`、标准=`true`），`inferencer.cpp` 按此切换，

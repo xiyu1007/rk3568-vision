@@ -195,7 +195,7 @@ V4L2 标准采集流程：`open → QUERYCAP → S_FMT(NV12) → S_PARM(fps) →
 
 真实 RKNN 推理（单一实现，无 mock），完整包含前处理 + 推理 + 后处理 + 画框：
 
-- **前处理**：NV12 → RGB letterbox（RGA 硬件加速：V4L2 帧走 dma-buf fd、mp4 帧走虚拟地址）
+- **前处理**：NV12 → RGB letterbox（RGA 硬件加速仅用于 V4L2 帧、走 dma-buf fd；mp4/克隆帧走 CPU 转换）
 - **推理三步曲**：`rknn_inputs_set → rknn_run → rknn_outputs_get`
 - **反量化**：`float = (int8 - zp) * scale`（本模型 scale≈0.09、zp≈43~69，非零零点）
 - **后处理**：三个输出头解码 + NMS，letterbox 逆映射回原图坐标
@@ -270,6 +270,29 @@ logging:
 
 ---
 
+## 快速启动 / 停止
+
+```bash
+# ① 编译(改了代码必须全量重编,否则可能跑旧二进制)
+make clean && make
+
+# ② 启动 RTMP 服务器 mediamtx
+#    ★ 必须在 third_lib/mediamtx/ 下启动才能加载 mediamtx.yml,
+#      否则报错 path 'live/stream' is not configured
+(cd third_lib/mediamtx && nohup ./mediamtx > mediamtx.log 2>&1 &)
+
+# ③ 启动推流程序(前台运行)
+./output/rk3568_vision -c conf/default.yaml -d /dev/video0        # 摄像头检测推流(最常用)
+# ./output/rk3568_vision -c conf/camera_push.yaml -d /dev/video0  # 摄像头纯推流(不推理)
+# ./output/rk3568_vision -c conf/test_mp4.yaml                    # mp4 文件联调(无摄像头)
+
+# ④ 停止推流:前台程序按 Ctrl+C,再停 mediamtx
+pkill mediamtx
+
+# ②③ 也可用一键脚本替代: ./scripts/start.sh -c conf/default.yaml -d /dev/video0
+```
+
+
 ## 7. 构建与部署
 
 ### 7.1 构建
@@ -283,11 +306,11 @@ make CROSS_COMPILE=aarch64-linux-gnu-
 
 ### 7.2 三平台（Makefile 按 `uname -m` / `CROSS_COMPILE` 自动判断）
 
-| 平台              | 行为                                                                           |
-| ----------------- | ------------------------------------------------------------------------------ |
-| aarch64（RK3568） | 链接板端 FFmpeg/RGA/MPP + `librknnrt.so`，生成 `output/rk3568_vision`（MPP 硬编优先） |
+| 平台              | 行为                                                                                             |
+| ----------------- | ------------------------------------------------------------------------------------------------ |
+| aarch64（RK3568） | 链接板端 FFmpeg/RGA/MPP +`librknnrt.so`，生成 `output/rk3568_vision`（MPP 硬编优先）         |
 | x86_64 交叉编译   | `make CROSS_COMPILE=aarch64-linux-gnu-`，用 `third_lib/aarch64-sysroot` 编出板端可运行二进制 |
-| x86_64 纯编译检查 | `make check` 只编译到`.o` 做语法检查（不链接/不运行）                          |
+| x86_64 纯编译检查 | `make check` 只编译到`.o` 做语法检查（不链接/不运行）                                        |
 
 ---
 
@@ -387,16 +410,16 @@ rk3568-vision/
 
 ## 11. 依赖与拉取
 
-| 依赖                                     | 用途      | 获取                                                                            |
-| ---------------------------------------- | --------- | ------------------------------------------------------------------------------- |
-| FFmpeg（libavcodec/format/util/swscale） | 软编/封装 | `apt-get install libavcodec-dev libavformat-dev libavutil-dev libswscale-dev` |
-| g++ (C++17) + make + pkg-config          | 构建      | `apt-get install build-essential pkg-config`                                  |
-| RGA（librga）                            | 前处理    | `apt-get install librga-dev`（RK3568 镜像通常自带）                           |
-| MPP（librockchip-mpp）                   | 硬编      | `apt-get install librockchip-mpp-dev`（RK3568 镜像通常自带）                  |
-| RKNN 运行时（librknnrt.so + rknn_api.h） | NPU 推理  | 已入库 `third_lib/librknn_api/`（缺失时 `./scripts/fetch_deps.sh` 兜底拉取）   |
-| mediamtx                                 | RTMP 推流 | 已入库 `third_lib/mediamtx/`（缺失时 `./scripts/fetch_deps.sh` 兜底拉取）      |
-| aarch64 交叉编译依赖（FFmpeg/RGA/MPP 头文件+库） | x86 交叉编译 | 已入库 `third_lib/aarch64-sysroot/`                                    |
-| g++-aarch64-linux-gnu                    | x86 交叉编译 | `apt-get install g++-aarch64-linux-gnu`（`install.sh` 自动装）               |
+| 依赖                                             | 用途         | 获取                                                                            |
+| ------------------------------------------------ | ------------ | ------------------------------------------------------------------------------- |
+| FFmpeg（libavcodec/format/util/swscale）         | 软编/封装    | `apt-get install libavcodec-dev libavformat-dev libavutil-dev libswscale-dev` |
+| g++ (C++17) + make + pkg-config                  | 构建         | `apt-get install build-essential pkg-config`                                  |
+| RGA（librga）                                    | 前处理       | `apt-get install librga-dev`（RK3568 镜像通常自带）                           |
+| MPP（librockchip-mpp）                           | 硬编         | `apt-get install librockchip-mpp-dev`（RK3568 镜像通常自带）                  |
+| RKNN 运行时（librknnrt.so + rknn_api.h）         | NPU 推理     | 已入库`third_lib/librknn_api/`（缺失时 `./scripts/fetch_deps.sh` 兜底拉取） |
+| mediamtx                                         | RTMP 推流    | 已入库`third_lib/mediamtx/`（缺失时 `./scripts/fetch_deps.sh` 兜底拉取）    |
+| aarch64 交叉编译依赖（FFmpeg/RGA/MPP 头文件+库） | x86 交叉编译 | 已入库`third_lib/aarch64-sysroot/`                                            |
+| g++-aarch64-linux-gnu                            | x86 交叉编译 | `apt-get install g++-aarch64-linux-gnu`（`install.sh` 自动装）              |
 
 > 一键部署+编译+运行（全新板端）：`./install.sh`；单独启动：`./scripts/start.sh`。
 
@@ -406,20 +429,20 @@ rk3568-vision/
 
 ## 12. 测试状态
 
-| 项                                          | 状态      | 说明                                                        |
-| ------------------------------------------- | --------- | ----------------------------------------------------------- |
-| mp4 输入 + 真实 NPU 推理 + 编码 + RTMP 推流 | ✅ 已验证 | 板端推流到 mediamtx，拉流端收到 h264 1280x720 帧            |
-| 真实摄像头采集 + 推理 + 编码 + RTMP 推流    | ✅ 已验证 | /dev/video0 1280x720@25fps，0 丢帧，退出干净                |
-| x86 交叉编译（aarch64）                     | ✅ 已验证 | `make CROSS_COMPILE=aarch64-linux-gnu-` 产物在板端直接运行     |
-| 硬件编码（Rockchip MPP）                    | ✅ 已验证 | `mpp_encoder.cpp`，enc≈4ms、CPU≈5%（软编 15~25ms/35%+） |
+| 项                                          | 状态      | 说明                                                         |
+| ------------------------------------------- | --------- | ------------------------------------------------------------ |
+| mp4 输入 + 真实 NPU 推理 + 编码 + RTMP 推流 | ✅ 已验证 | 板端推流到 mediamtx，拉流端收到 h264 1280x720 帧             |
+| 真实摄像头采集 + 推理 + 编码 + RTMP 推流    | ✅ 已验证 | /dev/video0 1280x720@25fps，0 丢帧，退出干净                 |
+| x86 交叉编译（aarch64）                     | ✅ 已验证 | `make CROSS_COMPILE=aarch64-linux-gnu-` 产物在板端直接运行 |
+| 硬件编码（Rockchip MPP）                    | ✅ 已验证 | `mpp_encoder.cpp`，enc≈4ms、CPU≈5%（软编 15~25ms/35%+）  |
 
 > 已修复一个关键 bug：NV12→RGB 前处理的 UV 双重偏移（`uv_row` 已定位到行，`uv_off`
 > 又重复加了行偏移），导致越界读、偶发段错误，并污染模型输入的色度（正是「框大小
 > 不匹配 / 一直是 person」的诱因之一）。
 >
-> 另修复：RGA 前处理对 V4L2 dma-coherent buffer 误用 `wrapbuffer_virtualaddr`（应走
-> `wrapbuffer_fd` 的 dma-buf 共享），导致 RGA2 MMU 重映射失败、日志 "RGA_BLIT fail:
-> Invalid argument" 并回退 CPU 前处理拖慢推理。已按数据来源分流（V4L2 走 fd、mp4 走虚拟地址）。
+> 另修复：RGA 前处理误用 `wrapbuffer_virtualaddr` 导致 RGA2 MMU 重映射间歇性失败（日志
+> "RGA_BLIT fail: Invalid argument"）并挂死内核。已改为：RGA 仅用于 V4L2 帧（走 `wrapbuffer_fd`
+> dma-buf 共享），mp4/克隆帧走 CPU 转换。
 
 ---
 
