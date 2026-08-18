@@ -119,8 +119,7 @@ bool Muxer::Open(const std::string& format, const std::string& url,
         if (!lan_ip.empty()) {
             std::string lan_url = url;
             lan_url.replace(lan_url.find("127.0.0.1"), std::strlen("127.0.0.1"), lan_ip);
-            Logger::instance().info("Stream Pull URL: %s", lan_url.c_str());
-            Logger::instance().info("Stream pulling command: ffplay -fflags nobuffer -flags low_delay %s ", lan_url.c_str());
+            Logger::instance().info("stream pulling: ffplay -fflags nobuffer -flags low_delay %s ", lan_url.c_str());
         }
     }
     return true;

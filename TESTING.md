@@ -11,11 +11,11 @@
 
 ## 0. 测试环境
 
-| 环境          | 登录方式       | 架构    | 用途                                |
-| ------------- | -------------- | ------- | ----------------------------------- |
-| rk3568 板端   | `ssh rk3568` | aarch64 | 编译 + 运行 + 测试（真实 NPU 推理） |
+| 环境                      | 登录方式                           | 架构    | 用途                                                              |
+| ------------------------- | ---------------------------------- | ------- | ----------------------------------------------------------------- |
+| rk3568 板端               | `ssh rk3568`                     | aarch64 | 编译 + 运行 + 测试（真实 NPU 推理）                               |
 | ubuntu 虚拟机 / WSL 22.04 | `ssh ubuntu` / `ssh wsl-22.04` | x86_64  | x86 交叉编译 aarch64（`make CROSS_COMPILE=aarch64-linux-gnu-`） |
-| Windows 本机  | —             | —      | 用 VLC 拉流看画面（可选）           |
+| Windows 本机              | —                                 | —      | 用 VLC 拉流看画面（可选）                                         |
 
 > 两端代码相同。Makefile 按 `uname -m` / `CROSS_COMPILE` 自动判断：aarch64 链接 `librknnrt.so`
 > 生成可执行文件；x86 交叉编译用 `third_lib/aarch64-sysroot` 编出 aarch64 二进制（交叉工具链
@@ -30,7 +30,6 @@
 在**板端**执行：
 
 ```bash
-cd /home/gx/project/gx/rk3568-vision
 ./install.sh            # 一键部署+编译+运行（自动检测/装依赖，编译后直接跑）
 # 或手动：make          # 生成 output/rk3568_vision
 ```
@@ -66,7 +65,6 @@ cd third_lib/mediamtx && ./mediamtx &       # 后台启动，默认监听 1935
 ### 第 1 步（板端）：启动推流
 
 ```bash
-cd /home/gx/project/gx/rk3568-vision
 ./output/rk3568_vision -c conf/test_mp4.yaml
 ```
 
@@ -126,7 +124,6 @@ v4l2-ctl --list-devices        # 应看到 rkisp_mainpath 下的 /dev/video0
 ### 第 1 步（板端）：启动推流
 
 ```bash
-cd /home/gx/project/gx/rk3568-vision
 ./output/rk3568_vision -c conf/default.yaml -d /dev/video0 -W 720 -H 480 -f 25
 # ./output/rk3568_vision -c conf/default.yaml -d /dev/video0 -W 1280 -H 720 -f 25
 ```
