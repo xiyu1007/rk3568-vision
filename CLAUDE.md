@@ -5,8 +5,8 @@
 ## 构建与运行
 
 ```bash
-./scripts/setup_env.sh   # 一键部署环境（全新板端：装 FFmpeg 开发库 + 配 librknnrt + 部署 mediamtx + 编译）
-./scripts/fetch_deps.sh  # 拉取三方依赖到 third_lib（rknn_api.h + librknnrt 2.3.2 + mediamtx）
+./install                # 一键部署+编译+运行（自动检测环境/third_lib 缺失自动装/拉取；x86 仅编译不运行）
+./scripts/fetch_deps.sh  # 拉取三方依赖到 third_lib（rknn_api.h + librknnrt 2.3.2 + mediamtx；缺失才拉取）
 ./scripts/start.sh       # 一键启动（mediamtx + rk3568_vision，参数透传，不做自动重启）
 make            # release：-O2 优化，生成 output/rk3568_vision
 make debug      # debug：-DVISION_DEBUG -g -O0，性能分析/队列深度/详细日志

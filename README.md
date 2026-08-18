@@ -350,6 +350,7 @@ ffprobe -v error -show_entries stream=codec_name,width,height \
 
 ```
 rk3568-vision/
+├── install                   # 一键部署+编译+运行（自动检测环境/third_lib）
 ├── Makefile                  # 构建（平台自动判断：aarch64 链接 rknnrt，x86 仅编译）
 ├── README.md                 # 设计文档
 ├── conf/
@@ -375,7 +376,7 @@ rk3568-vision/
 ├── third_lib/                # 三方依赖（不入库，fetch_deps.sh 拉取）
 │   ├── librknn_api/          #   librknnrt.so(2.3.2) + rknn_api.h
 │   └── mediamtx/             #   mediamtx 推流服务器（单二进制 + 配置）
-└── scripts/                  # setup_env.sh / start.sh / fetch_deps.sh / verify_rtmp.sh
+└── scripts/                  # start.sh / fetch_deps.sh / verify_rtmp.sh
 ```
 
 ---
@@ -391,7 +392,7 @@ rk3568-vision/
 | RKNN 运行时（librknnrt.so + rknn_api.h） | NPU 推理  | `./scripts/fetch_deps.sh`（拉取到 third_lib/librknn_api/）                    |
 | mediamtx                                 | RTMP 推流 | `./scripts/fetch_deps.sh`（拉取到 third_lib/mediamtx/）                       |
 
-> 一键部署（全新板端）：`./scripts/setup_env.sh`；一键启动：`./scripts/start.sh`。
+> 一键部署+编译+运行（全新板端）：`./install`；单独启动：`./scripts/start.sh`。
 
 > 配置解析用自研 YAML 解析器，无额外依赖。
 
