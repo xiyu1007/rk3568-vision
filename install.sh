@@ -82,5 +82,5 @@ if [ "$ARCH" = "aarch64" ]; then
     exec ./scripts/start.sh "$@"
 else
     echo "==> [4/4] 交叉编译完成：output/rk3568_vision（aarch64）"
-    echo "    拷到板端运行：scp output/rk3568_vision rk3568:~/rk3568-vision/output/"
+    echo "    拷到板端运行：scp output/rk3568_vision rk3568:~/project/gx/rk3568-vision/output/"
 fi

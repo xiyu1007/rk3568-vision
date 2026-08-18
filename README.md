@@ -297,7 +297,7 @@ make clean      # 清理
 ```bash
 cd /home/gx/project/gx/rk3568-vision
 make
-# sudo fuser -k /dev/video0 # 
+# sudo fuser -k /dev/video0 # 关闭所有摄像头
 ./output/rk3568_vision -c conf/default.yaml -d /dev/video0
 ```
 

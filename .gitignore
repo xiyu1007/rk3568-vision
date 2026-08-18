@@ -11,7 +11,7 @@
 /log/
 /output/
 /tmp/
-*.mp4
+!data/test.mp4
 *.flv
 *.h264
 *.jpg
