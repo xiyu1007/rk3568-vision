@@ -231,53 +231,46 @@ void Inferencer::Preprocess(const FramePtr& frame, uint8_t* rgb, LetterboxInfo& 
     // 灰边填充（YOLOv5 惯例 114）。
     std::memset(rgb, 114, static_cast<size_t>(model_width_) * model_height_ * 3);
 
-    // 分配 RGA 中间缓冲（采集分辨率 RGB）。
-    const size_t tmp_size = static_cast<size_t>(scaled_width) * scaled_height * 3;
-    if (rgb_tmp_buffer_.size() < tmp_size) {
-        rgb_tmp_buffer_.resize(tmp_size);
-    }
-
-    // RGA：NV12 → RGB 格式转换 + 等比缩放。
-    // 源数据来源二选一：
-    //   1) V4L2 摄像头（dma_fds 非空）：走 wrapbuffer_fd 的 dma-buf 零拷贝共享。
-    //      不能对 V4L2 的 dma-coherent buffer 用 wrapbuffer_virtualaddr —— RGA2 会
-    //      尝试用自己的 MMU 重映射这段用户虚拟地址，dma-coherent/CMA 页面无法被
-    //      IOMMU 翻译，映射失败返回 -EINVAL（日志 "RGA_BLIT fail: Invalid argument"）。
-    //   2) mp4 文件（无 fd，CPU 内存）：走 wrapbuffer_virtualaddr。
-    // 注意 wrapbuffer_* 参数顺序：addr/fd, width, height, format, wstride, hstride。
-    rga_buffer_t src;
+    // RGA 硬件前处理：仅用于 V4L2 零拷贝帧（有 dma-buf fd）。
+    // mp4/克隆帧是 CPU 内存，直接走下方 CPU 转换——RGA2 对 CPU 虚拟地址走 MMU 重映射
+    // 在板端会间歇性返回 -EINVAL（日志 "RGA_BLIT fail: Invalid argument"）并可能挂死内核，
+    // 务必避免对 CPU 内存走 wrapbuffer_virtualaddr。
     if (!frame->dma_fds.empty()) {
-        src = wrapbuffer_fd(
+        // 分配 RGA 中间缓冲（采集分辨率 RGB）。
+        const size_t tmp_size = static_cast<size_t>(scaled_width) * scaled_height * 3;
+        if (rgb_tmp_buffer_.size() < tmp_size) {
+            rgb_tmp_buffer_.resize(tmp_size);
+        }
+
+        // 注意 wrapbuffer_* 参数顺序：addr/fd, width, height, format, wstride, hstride。
+        rga_buffer_t src = wrapbuffer_fd(
             frame->dma_fds[0], width, height,
             RK_FORMAT_YCbCr_420_SP,
             static_cast<int>(frame->nv12_stride), height);
-    } else {
-        src = wrapbuffer_virtualaddr(
-            const_cast<uint8_t*>(frame->nv12_data), width, height,
-            RK_FORMAT_YCbCr_420_SP,
-            static_cast<int>(frame->nv12_stride), height);
-    }
-    rga_buffer_t dst = wrapbuffer_virtualaddr(
-        rgb_tmp_buffer_.data(), scaled_width, scaled_height,
-        RK_FORMAT_RGB_888,
-        scaled_width, scaled_height);
+        rga_buffer_t dst = wrapbuffer_virtualaddr(
+            rgb_tmp_buffer_.data(), scaled_width, scaled_height,
+            RK_FORMAT_RGB_888,
+            scaled_width, scaled_height);
 
-    // fx=fy=0 表示按 dst/src 尺寸自动缩放；interpolation=0 用默认插值；sync=1 同步执行。
-    const IM_STATUS status = imresize(src, dst);
-    if (status == IM_STATUS_SUCCESS) {
-        // RGA 成功：把缩放后的 RGB 拷到 letterbox 位置。
-        for (int row = 0; row < scaled_height; ++row) {
-            std::memcpy(rgb + (static_cast<size_t>(row + letterbox.pad_y) * model_width_ +
-                               letterbox.pad_x) * 3,
-                        rgb_tmp_buffer_.data() + static_cast<size_t>(row) * scaled_width * 3,
-                        static_cast<size_t>(scaled_width) * 3);
+        // fx=fy=0 按 dst/src 尺寸自动缩放；sync=1 同步执行。
+        const IM_STATUS status = imresize(src, dst);
+        if (status == IM_STATUS_SUCCESS) {
+            // RGA 成功：把缩放后的 RGB 拷到 letterbox 位置。
+            for (int row = 0; row < scaled_height; ++row) {
+                std::memcpy(rgb + (static_cast<size_t>(row + letterbox.pad_y) * model_width_ +
+                                   letterbox.pad_x) * 3,
+                            rgb_tmp_buffer_.data() + static_cast<size_t>(row) * scaled_width * 3,
+                            static_cast<size_t>(scaled_width) * 3);
+            }
+            return;
         }
-        return;
+
+        // RGA 失败兜底：CPU 浮点转换（保证功能不坏）。
+        Logger::instance().warn("inferencer: RGA preprocess failed (%d), fallback to CPU",
+                                static_cast<int>(status));
     }
 
-    // RGA 失败兜底：CPU 浮点转换（保证功能不坏）。
-    Logger::instance().warn("inferencer: RGA preprocess failed (%d), fallback to CPU",
-                            static_cast<int>(status));
+    // CPU 浮点转换（mp4/克隆帧，或 V4L2 RGA 失败兜底）。
     const uint8_t* nv12 = frame->nv12_data;
     const uint8_t* y_plane  = nv12;
     const uint8_t* uv_plane = nv12 + static_cast<size_t>(frame->nv12_stride) * height;

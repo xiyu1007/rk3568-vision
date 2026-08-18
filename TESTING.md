@@ -1,5 +1,29 @@
 # 测试说明
 
+## 快速启动 / 停止
+
+```bash
+# ① 编译(改了代码必须全量重编,否则可能跑旧二进制)
+make clean && make
+
+# ② 启动 RTMP 服务器 mediamtx
+#    ★ 必须在 third_lib/mediamtx/ 下启动才能加载 mediamtx.yml,
+#      否则报错 path 'live/stream' is not configured
+(cd third_lib/mediamtx && nohup ./mediamtx > mediamtx.log 2>&1 &)
+
+# ③ 启动推流程序(前台运行)
+./output/rk3568_vision -c conf/default.yaml -d /dev/video0        # 摄像头检测推流(最常用)
+# ./output/rk3568_vision -c conf/camera_push.yaml -d /dev/video0  # 摄像头纯推流(不推理)
+# ./output/rk3568_vision -c conf/test_mp4.yaml                    # mp4 文件联调(无摄像头)
+
+# ④ 停止推流:前台程序按 Ctrl+C,再停 mediamtx
+pkill mediamtx
+
+# ②③ 也可用一键脚本替代: ./scripts/start.sh -c conf/default.yaml -d /dev/video0
+```
+
+---
+
 本项目按下面的顺序测试，从简单到完整：
 
 1. **测试 A：mp4 输入 → RTMP 推流**（不需要摄像头，先验证「解码 → 推理 → 编码 → 推流」全链路）
