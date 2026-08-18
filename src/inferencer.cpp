@@ -238,13 +238,25 @@ void Inferencer::Preprocess(const FramePtr& frame, uint8_t* rgb, LetterboxInfo& 
     }
 
     // RGA：NV12 → RGB 格式转换 + 等比缩放。
-    // 注意：用 mmap 虚拟地址（Frame::nv12_data）而非 fd，以支持 V4L2 的 stride
-    // （bytesperline 可能 != width）。数据在 DMA buffer 中，mmap 映射零拷贝。
-    // 注意 wrapbuffer_virtualaddr 参数顺序：va, width, height, format, wstride, hstride。
-    rga_buffer_t src = wrapbuffer_virtualaddr(
-        const_cast<uint8_t*>(frame->nv12_data), width, height,
-        RK_FORMAT_YCbCr_420_SP,
-        static_cast<int>(frame->nv12_stride), height);
+    // 源数据来源二选一：
+    //   1) V4L2 摄像头（dma_fds 非空）：走 wrapbuffer_fd 的 dma-buf 零拷贝共享。
+    //      不能对 V4L2 的 dma-coherent buffer 用 wrapbuffer_virtualaddr —— RGA2 会
+    //      尝试用自己的 MMU 重映射这段用户虚拟地址，dma-coherent/CMA 页面无法被
+    //      IOMMU 翻译，映射失败返回 -EINVAL（日志 "RGA_BLIT fail: Invalid argument"）。
+    //   2) mp4 文件（无 fd，CPU 内存）：走 wrapbuffer_virtualaddr。
+    // 注意 wrapbuffer_* 参数顺序：addr/fd, width, height, format, wstride, hstride。
+    rga_buffer_t src;
+    if (!frame->dma_fds.empty()) {
+        src = wrapbuffer_fd(
+            frame->dma_fds[0], width, height,
+            RK_FORMAT_YCbCr_420_SP,
+            static_cast<int>(frame->nv12_stride), height);
+    } else {
+        src = wrapbuffer_virtualaddr(
+            const_cast<uint8_t*>(frame->nv12_data), width, height,
+            RK_FORMAT_YCbCr_420_SP,
+            static_cast<int>(frame->nv12_stride), height);
+    }
     rga_buffer_t dst = wrapbuffer_virtualaddr(
         rgb_tmp_buffer_.data(), scaled_width, scaled_height,
         RK_FORMAT_RGB_888,

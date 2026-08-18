@@ -39,7 +39,7 @@ RTMP 推流，端到端延迟控制在 100ms 以内。
 | 指标          | 目标值                            |
 | ------------- | --------------------------------- |
 | 采集          | 720P@25fps（NV12）                |
-| 单帧 NPU 推理 | ~25ms（YOLOv5s INT8）             |
+| 单帧 NPU 推理 | ~25ms（YOLOv5n INT8）             |
 | 端到端延迟    | < 100ms                           |
 | 输出          | H.264 + RTMP 推流 / 本地 MP4 录制 |
 
@@ -128,7 +128,7 @@ RTMP 推流，端到端延迟控制在 100ms 以内。
                                       (RTMP)                      (MP4)
 ```
 
-- **采集线程**：V4L2 `mmap` 零拷贝取帧 → 拷贝到 `Frame` → 入 `cap_q`
+- **采集线程**：V4L2 `mmap` 零拷贝取帧（引用 DMA buffer，不 memcpy）→ 构造 `Frame` → 入 `cap_q`
 - **稳帧线程**：按目标帧率节拍输出，源帧抖动时补帧/丢帧 → 入 `inf_q`
 - **推理线程**：NV12→RGB letterbox → NPU 推理 → 后处理(NMS) → 入 `enc_q`
 - **编码线程**：NV12 画框 → H.264 编码 → 包分发到 `push_q`/`record_q`
@@ -152,7 +152,7 @@ RTMP 推流，端到端延迟控制在 100ms 以内。
 IMX415 ──MIPI──▶ ISP ──NV12──▶ V4L2 DMA buffer
                                    │ mmap 映射
                                    ▼
-                          采集线程 memcpy（唯一必要拷贝）
+                          采集线程 mmap 引用 DMA buffer（零拷贝）
                                    │
                     Frame(nv12) ──cap_q──▶ 稳帧器 ──inf_q──▶ 推理
                                                               │
@@ -173,13 +173,14 @@ IMX415 ──MIPI──▶ ISP ──NV12──▶ V4L2 DMA buffer
 
 ## 5. 模块详解
 
-### 5.1 视频采集 `V4l2Capture`
+### 5.1 视频采集 `CameraSource`
 
-V4L2 标准采集流程：`open → QUERYCAP → S_FMT(NV12) → S_PARM(fps) → REQBUFS → mmap → QBUF → STREAMON`。
+V4L2 标准采集流程：`open → QUERYCAP → S_FMT(NV12) → S_PARM(fps) → REQBUFS → mmap → EXPBUF → QBUF → STREAMON`。
 
-- **mmap 零拷贝**：内核 DMA buffer 映射到用户空间，采集不产生内核态拷贝
-- **唯一必要拷贝**：DMA buffer 循环复用，`read()` 把 NV12 拷到 `Frame` 自有内存，供下游异步处理
-- **poll 超时**：`read()` 用 poll 限时 500ms，使采集线程能周期检查退出标志
+- **mmap 零拷贝**：内核 DMA buffer 映射到用户空间，`DQBUF` 取帧后直接引用 mmap 地址，不 memcpy
+- **EXPBUF 导出 fd**：`VIDIOC_EXPBUF` 导出 dma-buf fd（存进 `frame->dma_fds`），供 RGA 零拷贝消费
+- **buffer 归还**：`shared_ptr` 自定义 deleter 在引用归零时 `QBUF` 归还 buffer（循环复用）
+- **poll 超时**：`DQBUF` 前用 poll 限时 500ms，使采集线程能周期检查退出标志
 
 ### 5.2 稳帧器（`pipeline.cpp` 的 `pacerLoop`）
 
@@ -194,11 +195,11 @@ V4L2 标准采集流程：`open → QUERYCAP → S_FMT(NV12) → S_PARM(fps) →
 
 真实 RKNN 推理（单一实现，无 mock），完整包含前处理 + 推理 + 后处理 + 画框：
 
-- **前处理**：NV12 → RGB letterbox（等比缩放 + 灰边填充）
+- **前处理**：NV12 → RGB letterbox（RGA 硬件加速：V4L2 帧走 dma-buf fd、mp4 帧走虚拟地址）
 - **推理三步曲**：`rknn_inputs_set → rknn_run → rknn_outputs_get`
 - **反量化**：`float = (int8 - zp) * scale`（本模型 scale≈0.09、zp≈43~69，非零零点）
 - **后处理**：三个输出头解码 + NMS，letterbox 逆映射回原图坐标
-- **画框**：`drawBoxesNv12` 直接在 NV12 上画检测框（供推流展示）
+- **画框**：`DrawBoxesOnNv12` 直接在 NV12 上画检测框（供推流展示）
 
 ### 5.4 编码推流 `H264Encoder` + `Muxer`
 
@@ -298,7 +299,6 @@ make CROSS_COMPILE=aarch64-linux-gnu-
 ### 8.1 RK3568 板端：真实摄像头 → RTMP 推流
 
 ```bash
-cd /home/gx/project/gx/rk3568-vision
 ./install.sh -c conf/default.yaml -d /dev/video0
 # 或手动：make && ./output/rk3568_vision -c conf/default.yaml -d /dev/video0
 ```
@@ -416,6 +416,10 @@ rk3568-vision/
 > 已修复一个关键 bug：NV12→RGB 前处理的 UV 双重偏移（`uv_row` 已定位到行，`uv_off`
 > 又重复加了行偏移），导致越界读、偶发段错误，并污染模型输入的色度（正是「框大小
 > 不匹配 / 一直是 person」的诱因之一）。
+>
+> 另修复：RGA 前处理对 V4L2 dma-coherent buffer 误用 `wrapbuffer_virtualaddr`（应走
+> `wrapbuffer_fd` 的 dma-buf 共享），导致 RGA2 MMU 重映射失败、日志 "RGA_BLIT fail:
+> Invalid argument" 并回退 CPU 前处理拖慢推理。已按数据来源分流（V4L2 走 fd、mp4 走虚拟地址）。
 
 ---
 
