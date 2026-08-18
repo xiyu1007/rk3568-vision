@@ -51,7 +51,7 @@ FFmpeg（libavcodec/format/util/swscale）、g++(C++17)、make、pkg-config。
 ## 注意事项
 
 - 硬编用板端 Rockchip MPP（`mpp_encoder.cpp`，链接 `-lrockchip_mpp`），软编用 libx264；`encode.hardware=true` 时硬编优先、失败自动回退软编
-- 板端 IMX415 已检测到，`/dev/video0` 采集正常；前处理已用 RGA 硬件加速
+- 板端 IMX415 已检测到，`/dev/video0` 采集正常；前处理已用 RGA 硬件加速（`inferencer.cpp`：V4L2 帧走 `wrapbuffer_fd` 的 dma-buf 共享，mp4 帧走 `wrapbuffer_virtualaddr`，勿对 V4L2 dma-coherent buffer 用 virtualaddr）
 - 改 `include/vision/*.hpp` 后必须 `make clean` 全量重编（Makefile 不跟踪头文件依赖）
 - 模型可选 `model/yolov5n.rknn`（默认）/ `yolov5s.rknn` / `yolov5s_relu.rknn`，
   换模型须同步 `inference.use_sigmoid`（n/relu=`false`、标准 yolov5s=`true`）
