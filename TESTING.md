@@ -5,7 +5,7 @@
 1. **测试 A：mp4 输入 → RTMP 推流**（不需要摄像头，先验证「解码 → 推理 → 编码 → 推流」全链路）
 2. **测试 B：真实摄像头 → RTMP 推流**（完整链路：采集 → 推理 → 编码 → 推流）
 
-两个测试都在 **rk3568 板端**运行；ubuntu 虚拟机只做 x86 编译检查。
+两个测试都在 **rk3568 板端**运行；ubuntu 虚拟机 / WSL 22.04 做 x86 交叉编译（编出板端可运行二进制）。
 
 ---
 
@@ -14,11 +14,12 @@
 | 环境          | 登录方式       | 架构    | 用途                                |
 | ------------- | -------------- | ------- | ----------------------------------- |
 | rk3568 板端   | `ssh rk3568` | aarch64 | 编译 + 运行 + 测试（真实 NPU 推理） |
-| ubuntu 虚拟机 | `ssh ubuntu` | x86_64  | 仅 x86 编译检查（不运行）           |
+| ubuntu 虚拟机 / WSL 22.04 | `ssh ubuntu` / `ssh wsl-22.04` | x86_64  | x86 交叉编译 aarch64（`make CROSS_COMPILE=aarch64-linux-gnu-`） |
 | Windows 本机  | —             | —      | 用 VLC 拉流看画面（可选）           |
 
-> 两端代码相同。Makefile 按 `uname -m` 自动判断：aarch64 链接 `librknnrt.so`
-> 生成可执行文件；x86 只编译到 `.o` 做语法检查（真实推理依赖板端 NPU，x86 不运行）。
+> 两端代码相同。Makefile 按 `uname -m` / `CROSS_COMPILE` 自动判断：aarch64 链接 `librknnrt.so`
+> 生成可执行文件；x86 交叉编译用 `third_lib/aarch64-sysroot` 编出 aarch64 二进制（交叉工具链
+> GLIBC 需 ≤ 板端 2.35，用 Ubuntu 22.04 工具链即可）；`make check` 则只做语法检查。
 
 ---
 
@@ -30,13 +31,14 @@
 
 ```bash
 cd /home/gx/project/gx/rk3568-vision
-make            # 生成 output/rk3568_vision
+./install.sh            # 一键部署+编译+运行（自动检测/装依赖，编译后直接跑）
+# 或手动：make          # 生成 output/rk3568_vision
 ```
 
 看到 `==> 构建完成: output/rk3568_vision` 即成功。
 
-> 依赖：`build-essential`、`pkg-config`、FFmpeg 开发库（libavcodec/format/util/swscale）；
-> RKNN 运行时在 `third_lib/librknn_api/`（`./scripts/fetch_deps.sh` 拉取）。
+> 依赖：`build-essential`、`pkg-config`、FFmpeg/RGA/MPP 开发库；RKNN 运行时/mediamtx 均已入库
+> `third_lib/`，`./install.sh` 会自动装依赖并编译，无需手动处理。
 
 ### 1.2 确认 RTMP 服务器（mediamtx）在运行
 
@@ -200,8 +202,9 @@ ffprobe -v error -show_entries stream=codec_name,width,height -of default=noprin
 
 ## 6. 常见问题
 
-1. **x86 `make` 不产生可执行文件** —— 正常：x86 仅编译检查，真实推理需板端 NPU。
-2. **`h264_rkmpp` 找不到** —— 该 FFmpeg 分支无 rkmpp，`encode.hardware=false` 回退 libx264（软编）。
+1. **x86 `make` 不产生可执行文件** —— 正常：x86 默认只做编译检查；要产出 aarch64 可执行文件用
+   `make CROSS_COMPILE=aarch64-linux-gnu-`（交叉编译），真实推理仍需在板端 NPU 上运行。
+2. **硬编失败回退软编** —— `encode.hardware=true` 时优先用 Rockchip MPP 硬编，MPP 打不开会自动回退 libx264 软编；日志里 `encoder=hw(mpp)` / `encoder=sw(libx264)` 可见当前用哪种。
 3. **`v4l2: open /dev/video0 failed`** —— 摄像头未检测到，先 `v4l2-ctl --list-devices` 确认，检查排线/供电。
 4. **mediamtx 拉流只有流信息、0 视频帧** —— mediamtx v1.9.3 不转发「纯视频、无音频」的 RTMP 流
    （ffmpeg `-c:v libx264 -an` 推流同样复现：拉流端 0 帧）。本项目已在 FLV 中自动补一路静音 AAC 音轨

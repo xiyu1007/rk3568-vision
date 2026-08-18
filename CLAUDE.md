@@ -5,12 +5,14 @@
 ## 构建与运行
 
 ```bash
-./install                # 一键部署+编译+运行（自动检测环境/third_lib 缺失自动装/拉取；x86 仅编译不运行）
-./scripts/fetch_deps.sh  # 拉取三方依赖到 third_lib（rknn_api.h + librknnrt 2.3.2 + mediamtx；缺失才拉取）
+./install.sh             # 一键部署+编译+运行（自动检测环境/third_lib 缺失自动装/拉取；aarch64 编译后运行，x86 交叉编译）
+./scripts/fetch_deps.sh  # 拉取三方依赖到 third_lib（缺失才拉取，通常已入库）
 ./scripts/start.sh       # 一键启动（mediamtx + rk3568_vision，参数透传，不做自动重启）
 make            # release：-O2 优化，生成 output/rk3568_vision
 make debug      # debug：-DVISION_DEBUG -g -O0，性能分析/队列深度/详细日志
 make clean      # 清理 build/ 与 output/
+# x86 上交叉编译 aarch64（产物 output/rk3568_vision 可直接拷到板端运行）：
+make CROSS_COMPILE=aarch64-linux-gnu-
 ```
 
 命令行参数：`-c 配置 -d 设备 -W/-H/-f 宽高帧率 -s RTMP地址 --no-stream --no-inference --record 路径 -v`
@@ -21,10 +23,11 @@ make clean      # 清理 build/ 与 output/
 - 摄像头纯推流（不推理）：`./scripts/start.sh -c conf/camera_push.yaml -d /dev/video0`
 - mp4 联调推流：`./scripts/start.sh -c conf/test_mp4.yaml`
 
-三方库统一放 `third_lib/`（不入库，fetch_deps.sh 拉取）：
+三方库统一放 `third_lib/`（已入库，`fetch_deps.sh` 仅作缺失时兜底拉取）：
 
 - `third_lib/librknn_api/`：rknn_api.h + librknnrt.so（2.3.2，模型需 2.x 运行时；程序经 rpath 引用，不覆盖系统 /lib 的 2.1.0）
 - `third_lib/mediamtx/`：mediamtx 推流服务器（单二进制 + 配置）
+- `third_lib/aarch64-sysroot/`：aarch64 的 FFmpeg/RGA/MPP 头文件 + 库，供 x86 交叉编译链接
 
 ## 架构
 
@@ -49,21 +52,23 @@ RTMP 推流 / MP4 录制的多线程流水线。头文件在 `include/vision/`�
 - **线程通信**：有界环形缓冲 + 条件变量（`ring_buffer.hpp`），生产者-消费者，满则丢最旧
 - **配置**：`conf/default.yaml`（自研 YAML 解析器，零第三方依赖），命令行可覆盖
 
-## 构建（Makefile 按 `uname -m` 自动判断）
+## 构建（Makefile 按 `uname -m` / `CROSS_COMPILE` 自动判断）
 
-- **aarch64**：链接 `third_lib/librknn_api/aarch64/librknnrt.so`，生成可执行文件
-- **x86_64**：仅编译到 `.o` 做语法检查（真实 RKNN 推理需板端 NPU，x86 不运行）
+- **aarch64（板端原生）**：链接板端 FFmpeg/RGA/MPP + `third_lib/librknn_api/aarch64/librknnrt.so`，生成可执行文件
+- **x86_64 交叉编译**：`make CROSS_COMPILE=aarch64-linux-gnu-`，用 `third_lib/aarch64-sysroot` 里的 aarch64 头文件/库编出板端可运行的二进制（交叉工具链 GLIBC 需 ≤ 板端 2.35，Ubuntu 22.04 工具链即可）
+- **x86_64 纯编译检查**：`make check` 只编译到 `.o` 做语法检查（不链接/不运行）
 
 ## 依赖
 
 - 编译/封装：FFmpeg（libavcodec/format/util/swscale）、g++(C++17)、make、pkg-config
 - 前处理：RGA（`librga-dev`）；硬编：MPP（`librockchip-mpp-dev`）—— 均 RK3568 板端仓库自带
-- RKNN 运行时放 `third_lib/librknn_api/`（不入库，`fetch_deps.sh` 拉取）；RTMP 服务器 mediamtx
+- RKNN 运行时 / mediamtx / aarch64 交叉编译依赖均入库 `third_lib/`（`fetch_deps.sh` 仅作缺失兜底）
+- x86 交叉编译还需 `g++-aarch64-linux-gnu`（交叉工具链，`install.sh` 会自动安装）
 
 ## 测试环境
 
 - **rk3568 板端**：`ssh rk3568`，工作目录 `/home/gx/project/gx/rk3568-vision`
-- **ubuntu 虚拟机**：`ssh ubuntu`，仅做 x86 编译检查
+- **ubuntu 虚拟机 / WSL 22.04**：`ssh ubuntu` / `ssh wsl-22.04`，x86 交叉编译（`make CROSS_COMPILE=aarch64-linux-gnu-` 编出板端可运行二进制；要求交叉工具链 GLIBC ≤ 板端 2.35，用 Ubuntu 22.04 工具链）
 - **RTMP 服务器**：板端 mediamtx（`third_lib/mediamtx/` 下，`cd third_lib/mediamtx && ./mediamtx`，监听 1935）；可用 `./scripts/start.sh` 一键启动
 - 测试顺序：先 mp4 输入（`source=mp4`）验证全链路，再切真实摄像头
 
@@ -83,7 +88,7 @@ RTMP 推流 / MP4 录制的多线程流水线。头文件在 `include/vision/`�
   并把 rkaiq 升到 6.9.0（`dpkg -i` 该 deb），最后 `systemctl start rkaiq_3A`（须 root，普通用户跑会段错误）。
   本项目 pipeline 只是忠实编码摄像头 NV12，不参与调色。
 - RTMP 拉流的「数秒延迟」主要来自**拉流端缓冲**而非本 pipeline：pipeline 稳态延迟约 60~100ms
-  （稳帧器 40ms + 软编 ~15ms + 封装 ~5ms），ffprobe 实测流 pts 随实时推进、`frames=push` 无积压。
+  （稳帧器 40ms + 硬编 ~5ms + 封装 ~5ms），ffprobe 实测流 pts 随实时推进、`frames=push` 无积压。
   VLC 默认 RTMP 缓冲 ~1s+，用 `vlc --network-caching=200 rtmp://...` 或在「输入/编解码器→网络缓存」
   里调到 100~200ms 即可降到亚秒级；ffmpeg 用 `-fflags nobuffer -flags low_delay -analyzeduration 0 -probesize 32`。
 - mediamtx v1.9.3 不转发「纯视频、无音频」的 RTMP 流（拉流端 0 帧），须在 FLV 补一路

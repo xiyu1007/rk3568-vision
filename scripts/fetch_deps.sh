@@ -8,8 +8,8 @@
 #   2. third_lib/librknn_api/aarch64/librknnrt.so RKNN 运行时库（2.3.2，aarch64）
 #   3. third_lib/mediamtx/                        mediamtx RTMP 推流服务器（单二进制）
 #
-# 说明：这些依赖体积较大/涉及外部 SDK，不入库（.gitignore 忽略 third_lib/），
-#       在全新环境上用本脚本一键拉取。配置解析用自研 YAML 解析器，无额外依赖。
+# 说明：这些依赖已入库 third_lib/（随仓库分发）；本脚本仅在缺失时兜底联网拉取
+#       （用于精简克隆或文件被误删的场景）。配置解析用自研 YAML 解析器，无额外依赖。
 # ============================================================================
 
 set -euo pipefail
