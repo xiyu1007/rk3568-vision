@@ -6,6 +6,9 @@
 
 #include <cstring>
 
+#include <arpa/inet.h>
+#include <ifaddrs.h>
+
 extern "C" {
 #include <libavcodec/avcodec.h>
 #include <libavformat/avformat.h>
@@ -16,6 +19,35 @@ extern "C" {
 #include "vision/logger.hpp"
 
 namespace vision {
+
+namespace {
+
+// 获取本机第一个非回环的 IPv4 地址（用于打印跨机器拉流地址）。失败返回空串。
+std::string GetLanIp() {
+    struct ifaddrs* ifaddr = nullptr;
+    if (getifaddrs(&ifaddr) != 0) {
+        return "";
+    }
+    std::string result;
+    for (struct ifaddrs* ifa = ifaddr; ifa != nullptr; ifa = ifa->ifa_next) {
+        if (ifa->ifa_addr == nullptr || ifa->ifa_addr->sa_family != AF_INET) {
+            continue;
+        }
+        if (std::strcmp(ifa->ifa_name, "lo") == 0) {
+            continue;
+        }
+        char ip[INET_ADDRSTRLEN] = {0};
+        if (inet_ntop(AF_INET, &reinterpret_cast<struct sockaddr_in*>(ifa->ifa_addr)->sin_addr,
+                      ip, sizeof(ip)) != nullptr) {
+            result = ip;
+            break;
+        }
+    }
+    freeifaddrs(ifaddr);
+    return result;
+}
+
+} // namespace
 
 // ---------------------------------------------------------------------------
 // 析构
@@ -80,6 +112,17 @@ bool Muxer::Open(const std::string& format, const std::string& url,
         return false;
     }
     Logger::instance().info("muxer: opened %s -> %s", format.c_str(), url.c_str());
+
+    // 若推流地址是本机回环，补打一行跨机器拉流地址 + 拉流命令，方便用户直接复制。
+    if (url.find("127.0.0.1") != std::string::npos) {
+        const std::string lan_ip = GetLanIp();
+        if (!lan_ip.empty()) {
+            std::string lan_url = url;
+            lan_url.replace(lan_url.find("127.0.0.1"), std::strlen("127.0.0.1"), lan_ip);
+            Logger::instance().info("Stream Pull URL: %s", lan_url.c_str());
+            Logger::instance().info("Stream pulling command: ffplay -fflags nobuffer -flags low_delay %s ", lan_url.c_str());
+        }
+    }
     return true;
 }
 

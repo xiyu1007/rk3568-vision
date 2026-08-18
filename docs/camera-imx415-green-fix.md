@@ -19,27 +19,30 @@
 1. **确认不是本项目代码问题**：用 `v4l2-ctl` / `ffmpeg` 直接抓 `/dev/video0` 的原始 NV12 帧，
    绕过我们自己的 pipeline。结果原始帧**同样偏绿偏暗** → 说明是摄像头/驱动/ISP 的问题，不是
    pipeline 的编码或转换问题。
-
 2. **确认 ISP 的 3A 引擎没有在跑**：
+
    ```bash
    ps aux | grep -i rkaiq          # 没有 rkaiq_3A_server 进程
    systemctl status rkaiq_3A       # inactive (dead)
    ```
+
    Rockchip 的 ISP 需要 `rkaiq_3A_server`（3A = 自动曝光/自动增益/自动白平衡）才能输出正常色彩。
    没有它，传感器 raw 输出就是偏绿偏暗的。
-
 3. **手工运行 3A 服务看报错**：
+
    ```bash
    /usr/bin/rkaiq_3A_server
    ```
+
    日志关键报错：
+
    ```
    XCORE:E:access /etc/iqfiles//imx415_CMK-OT1522-FG3_CS-P1150-IRC-8M-FAU.json && ...bin failed!
    XCORE:E:_rkAiqManager init error!
    CAMHW:E:can't find sensor
    ```
-   这说明 3A 服务启动时**找不到 IMX415 对应的 IQ 标定文件**。
 
+   这说明 3A 服务启动时**找不到 IMX415 对应的 IQ 标定文件**。
 4. **确认 IQ 文件缺失**：`ls /etc/iqfiles/` 里只有 gc02m2 / ov8858 等一堆别的传感器的 IQ 文件，
    **没有 imx415 开头的文件**。
 
@@ -51,11 +54,11 @@
 IQ 文件是 Rockchip 相机引擎 `camera_engine_rkaiq` 包的一部分，随系统镜像分发。
 对比 SDK（`ubuntu` 虚拟机 `/home/gx/project/linux/LubanCat_SDK`）里各发行版 rkaiq 包的内容：
 
-| 发行版 | camera_engine_rkaiq 版本 | 是否含 IMX415 IQ 文件 |
-|--------|--------------------------|----------------------|
-| ubuntu20.04 / debian11 | 5.0x4.1（AIQ 5.x） | ✅ 有（331KB） |
-| **ubuntu22.04** | **6.8.0（AIQ 6.x）** | ❌ **没有** |
-| **debian12** | **6.9.0（AIQ 6.x）** | ✅ **有（631KB）** |
+| 发行版                 | camera_engine_rkaiq 版本   | 是否含 IMX415 IQ 文件   |
+| ---------------------- | -------------------------- | ----------------------- |
+| ubuntu20.04 / debian11 | 5.0x4.1（AIQ 5.x）         | ✅ 有（331KB）          |
+| **ubuntu22.04**  | **6.8.0（AIQ 6.x）** | ❌**没有**        |
+| **debian12**     | **6.9.0（AIQ 6.x）** | ✅**有（631KB）** |
 
 两个关键点：
 
