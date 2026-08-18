@@ -1,18 +1,15 @@
 #!/usr/bin/env bash
 # ============================================================================
-# install — 一键部署：检测环境 → 拉取依赖 → 编译 → 运行（仅板端）
+# install.sh — 一键部署：检测环境 → 拉取依赖 → 编译 → 运行（仅板端）
 # ============================================================================
 #
 # 自动完成：
-#   1. 检测/安装编译依赖（aarch64：FFmpeg + RGA + MPP 开发库，缺则 apt 装）
+#   1. 检测/安装编译依赖（aarch64：FFmpeg+RGA+MPP 开发库；x86：aarch64 交叉编译器）
 #   2. 检测/拉取 third_lib（RKNN 运行时 + mediamtx，缺失时联网拉取）
-#   3. 编译（aarch64 生成可执行文件；x86_64 仅编译检查，不运行）
+#   3. 编译（aarch64 原生编译；x86 交叉编译出 aarch64 可执行文件）
 #   4. 运行（仅 aarch64：启动 mediamtx + 推流应用，参数透传）
 #
-# 用法：
-#   ./install                                          # 默认 conf/default.yaml
-#   ./install -c conf/camera_push.yaml -d /dev/video0  # 摄像头纯推流（不推理）
-#   ./install -c conf/test_mp4.yaml                    # mp4 联调
+# x86 交叉编译：产物 output/rk3568_vision 为 aarch64 可执行文件，直接拷到板端运行。
 # ============================================================================
 
 set -e
@@ -20,7 +17,6 @@ cd "$(dirname "$0")"
 
 ARCH="$(uname -m)"
 
-# sudo 密码（默认 1，可用 SUDO_PASS 环境变量覆盖）。
 run_sudo() { echo "${SUDO_PASS:-1}" | sudo -S "$@"; }
 
 echo "============================================================"
@@ -28,7 +24,7 @@ echo " rk3568_vision 一键部署（$ARCH）"
 echo "============================================================"
 
 # ---------------------------------------------------------------------------
-# 1. 编译依赖（仅 aarch64 需要；x86 只做编译检查，不装依赖）
+# 1. 编译依赖
 # ---------------------------------------------------------------------------
 if [ "$ARCH" = "aarch64" ]; then
     echo ""
@@ -45,11 +41,19 @@ if [ "$ARCH" = "aarch64" ]; then
     fi
 else
     echo ""
-    echo "==> [1/4] x86_64：跳过依赖安装（仅编译检查）"
+    echo "==> [1/4] 检查交叉编译工具链（aarch64-linux-gnu-g++）"
+    if command -v aarch64-linux-gnu-g++ >/dev/null 2>&1; then
+        echo "    交叉编译器已就绪"
+    else
+        echo "    安装交叉编译器 ..."
+        run_sudo apt-get update -y
+        run_sudo apt-get install -y g++-aarch64-linux-gnu \
+            || echo "    [WARN] 交叉编译器安装失败"
+    fi
 fi
 
 # ---------------------------------------------------------------------------
-# 2. third_lib（RKNN 运行时 + mediamtx，缺失时联网拉取）
+# 2. third_lib（RKNN 运行时 + mediamtx）
 # ---------------------------------------------------------------------------
 echo ""
 echo "==> [2/4] 检查 third_lib（RKNN 运行时 + mediamtx）"
@@ -60,8 +64,14 @@ echo "==> [2/4] 检查 third_lib（RKNN 运行时 + mediamtx）"
 # ---------------------------------------------------------------------------
 echo ""
 echo "==> [3/4] 编译"
-make clean
-make
+if [ "$ARCH" = "aarch64" ]; then
+    make clean
+    make
+else
+    # x86：交叉编译 aarch64（aarch64 头文件/库已入库在 third_lib/aarch64-sysroot）
+    make clean
+    make CROSS_COMPILE=aarch64-linux-gnu-
+fi
 
 # ---------------------------------------------------------------------------
 # 4. 运行（仅 aarch64）
@@ -71,5 +81,6 @@ if [ "$ARCH" = "aarch64" ]; then
     echo "==> [4/4] 启动运行（mediamtx + rk3568_vision）"
     exec ./scripts/start.sh "$@"
 else
-    echo "==> [4/4] x86_64：编译检查完成，不运行（真实推理需板端 NPU）"
+    echo "==> [4/4] 交叉编译完成：output/rk3568_vision（aarch64）"
+    echo "    拷到板端运行：scp output/rk3568_vision rk3568:~/project/gx/rk3568-vision/output/"
 fi

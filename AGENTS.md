@@ -5,9 +5,12 @@
 ## 构建与运行
 
 ```bash
-make            # 板端(aarch64)：链接 librknnrt.so 生成可执行文件；x86：仅编译检查
+./install.sh    # 一键部署+编译+运行（aarch64 编译后运行，x86 交叉编译）
+make            # 板端(aarch64)：链接板端 FFmpeg/RGA/MPP + librknnrt.so 生成可执行文件
+make CROSS_COMPILE=aarch64-linux-gnu-   # x86 交叉编译 aarch64（产物板端可直接运行）
+make check      # x86 仅编译检查（不链接/不运行）
 make clean      # 清理
-./scripts/fetch_deps.sh   # 拉取 RKNN 依赖（rknn_api.h + librknnrt.so）
+./scripts/fetch_deps.sh   # 拉取 RKNN 依赖（缺失才拉取，通常已入库）
 ```
 
 命令行参数：`-c 配置 -d 设备 -W/-H/-f 宽高帧率 -s RTMP地址 --no-stream --no-inference --record 路径 -v`
@@ -25,22 +28,23 @@ RTMP 推流 / MP4 录制的多线程流水线。头文件在 `include/vision/`�
 - **线程通信**：有界环形缓冲 + 条件变量（`ring_buffer.hpp`），生产者-消费者，满则丢最旧
 - **配置**：`conf/default.yaml`（自研 YAML 解析器，零第三方依赖），命令行可覆盖
 
-## 构建（Makefile 按 `uname -m` 自动判断）
+## 构建（Makefile 按 `uname -m` / `CROSS_COMPILE` 自动判断）
 
-- **aarch64**：链接 `third_lib/librknn_api/aarch64/librknnrt.so`，生成可执行文件
-- **x86_64**：仅编译到 `.o` 做语法检查（真实 RKNN 推理需板端 NPU，x86 不运行）
+- **aarch64（板端原生）**：链接板端 FFmpeg/RGA/MPP + `third_lib/librknn_api/aarch64/librknnrt.so`，生成可执行文件
+- **x86_64 交叉编译**：`make CROSS_COMPILE=aarch64-linux-gnu-`，用 `third_lib/aarch64-sysroot` 编出板端可运行二进制（交叉工具链 GLIBC 需 ≤ 板端 2.35）
+- **x86_64 纯编译检查**：`make check` 只编译到 `.o` 做语法检查
 
 ## 依赖
 
 FFmpeg（libavcodec/format/util/swscale）、g++(C++17)、make、pkg-config。
 板端自带 RGA（`librga-dev`）与 MPP（`librockchip-mpp-dev`，硬编）。
-三方库统一放 `third_lib/`（不入库，`fetch_deps.sh` 拉取）：`librknn_api/`（RKNN 2.3.2）
-与 `mediamtx/`（RTMP 推流服务器）。
+三方库统一放 `third_lib/`（已入库，`fetch_deps.sh` 仅作缺失兜底）：`librknn_api/`（RKNN 2.3.2）、
+`mediamtx/`（RTMP 推流服务器）、`aarch64-sysroot/`（aarch64 交叉编译的 FFmpeg/RGA/MPP 头文件+库）。
 
 ## 测试环境
 
 - **rk3568 板端**：`ssh rk3568`，工作目录 `/home/gx/project/gx/rk3568-vision`
-- **ubuntu 虚拟机**：`ssh ubuntu`，仅做 x86 编译检查
+- **ubuntu 虚拟机 / WSL 22.04**：`ssh ubuntu` / `ssh wsl-22.04`，x86 交叉编译（`make CROSS_COMPILE=aarch64-linux-gnu-`）
 - **RTMP 服务器**：板端 mediamtx（`third_lib/mediamtx/`，监听 1935），`./scripts/start.sh` 一键启动
 - 测试顺序：先 mp4 输入（`source=mp4`）验证全链路，再切真实摄像头
 
